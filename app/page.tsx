@@ -1,18 +1,26 @@
+import { SiteHeader } from "@/components/marketing/site-header";
+import { Hero } from "@/components/marketing/hero";
+import { StackBar } from "@/components/marketing/stack-bar";
+import { Features } from "@/components/marketing/features";
+import { HowItWorks } from "@/components/marketing/how-it-works";
+import { Pricing } from "@/components/marketing/pricing";
+import { Faq } from "@/components/marketing/faq";
+import { Cta, SiteFooter } from "@/components/marketing/cta-footer";
+
 export default function Home() {
   return (
-    <main
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "100vh",
-        fontFamily: "sans-serif",
-        fontSize: "2rem",
-        backgroundColor: "#f0f4f8",
-        color: "#1a202c",
-      }}
-    >
-      Hello World 👋
-    </main>
+    <>
+      <SiteHeader />
+      <main>
+        <Hero />
+        <StackBar />
+        <Features />
+        <HowItWorks />
+        <Pricing />
+        <Faq />
+        <Cta />
+      </main>
+      <SiteFooter />
+    </>
   );
 }
