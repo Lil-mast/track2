@@ -15,6 +15,8 @@ SQL schema file: `database/sql/001_schema.sql`
 | Database | AWS Aurora PostgreSQL (Serverless v2) |
 | Auth | AWS Cognito (lenders only, v1) |
 | Frontend + API | Next.js on Vercel (Vercel Functions) |
+| AI Engine | AWS Nova (Pro/Lite) via Amazon Bedrock |
+| AI Orchestration | AWS Step Functions + Amazon EventBridge |
 | Email Notifications | Amazon SES (mocked in v1 — infrastructure ready, not wired) |
 | Future SMS | Amazon SNS (schema ready, implementation post-hackathon) |
 
@@ -258,6 +260,82 @@ created_at  TIMESTAMPTZ
 
 ---
 
+### Table 7: `ai_insights`
+
+**What it stores:** Every risk score the AI calculates for a loan — one row per analysis run.
+
+**Why it exists:** The AI engine (AWS Nova via Bedrock) produces a dynamic default-risk score (0–100) for each borrower. Storing every run (not just the latest) enables trend analysis — a score rising from 40 → 65 → 82 over three runs signals worsening liquidity even if no single value crosses the threshold. This table is the AI engine's primary write target.
+
+**How it works:** When the Step Functions pipeline completes a risk assessment, the final step writes a row here and also updates `loans.latest_risk_score` for fast dashboard display without a JOIN. The `input_params` JSONB column stores the sanitized data that was sent to the model, satisfying the audit log requirement from the AI engine spec.
+
+**High-risk threshold:** A score above 70 triggers automatic strategy generation. The partial index on `risk_score > 70` keeps this threshold query efficient as the table grows.
+
+**Key columns:**
+```
+id            UUID          Aurora-generated primary key
+loan_id       UUID          FK → loans.id (CASCADE delete)
+lender_id     UUID          FK → users.id (tenant scoping — every query filtered by this)
+risk_score    NUMERIC(5,2)  0 = low risk, 100 = high risk
+model_id      TEXT          e.g. "amazon.nova-pro-v1:0" — compliance audit trail
+input_params  JSONB         Sanitized data sent to model — compliance + debug
+created_at    TIMESTAMPTZ
+```
+
+**Indexes:**
+- `(loan_id, created_at DESC)` — trend chart: all scores for a loan newest first
+- `lender_id` — portfolio overview: all scores across a lender's loans
+- Partial index on `loan_id WHERE risk_score > 70` — fast high-risk loan detection
+
+---
+
+### Table 8: `strategies`
+
+**What it stores:** AI-drafted and lender-reviewed recovery plans for at-risk loans.
+
+**Why it exists:** The AI engine implements a "Human-in-the-Loop" pattern — AWS Nova drafts a recovery plan but a loan officer must review, edit, and approve it before it is acted upon. This table stores the full lifecycle of each strategy from initial draft through approval and dispatch.
+
+**Lifecycle:**
+```
+draft → approved → dispatched
+```
+- `draft`: AI has written the plan, awaiting loan officer review in the dashboard
+- `approved`: loan officer has reviewed and approved the strategy
+- `dispatched`: strategy has been sent or acted upon
+
+**How it connects to ai_insights:** The `insight_id` column optionally links a strategy back to the specific AI analysis run that produced it. This lets you answer "which risk score triggered this strategy?" — useful for compliance auditing and model performance review.
+
+**content column:** Stores the full Markdown-formatted recovery plan returned by AWS Nova. The dashboard renders this as formatted text for the loan officer to read and edit before approving.
+
+**Key columns:**
+```
+id                     UUID             Aurora-generated primary key
+loan_id                UUID             FK → loans.id (CASCADE delete)
+lender_id              UUID             FK → users.id (tenant scoping)
+insight_id             UUID             FK → ai_insights.id (optional — which run triggered this)
+risk_score_at_creation NUMERIC(5,2)     Snapshot of score when strategy was generated
+content                TEXT             Full Markdown recovery plan from AWS Nova
+status                 strategy_status  draft | approved | dispatched
+model_id               TEXT             Which Nova model version drafted this
+approved_at            TIMESTAMPTZ      Set when loan officer approves
+created_at             TIMESTAMPTZ
+updated_at             TIMESTAMPTZ (auto-updated by trigger)
+```
+
+**Indexes:**
+- `(loan_id, created_at DESC)` — loan detail view: all strategies for a loan
+- `lender_id` — lender's full strategy history
+- Partial index on `(lender_id, created_at DESC) WHERE status = 'draft'` — the review queue panel showing only pending drafts
+
+---
+
+### Column addition: `loans.latest_risk_score`
+
+**What it stores:** The most recent AI risk score for this loan (0–100). NULL if no analysis has run yet.
+
+**Why it exists:** The lender dashboard needs to display risk scores next to every loan in the portfolio table. Joining `ai_insights` on every dashboard load (which may show 50+ loans) is expensive. Caching the latest score directly on the `loans` row makes the dashboard query a simple SELECT with no JOIN. The AI pipeline updates this column atomically whenever it writes a new row to `ai_insights`.
+
+---
+
 ## How They Connect in a Real Flow
 
 ### Flow 1: Lender Onboarding
@@ -359,7 +437,85 @@ Lender dashboard refreshes:
 
 ---
 
-### Flow 4: Recording a Payment
+### Flow 4: AI Risk Scoring and Strategy Generation
+
+```
+EventBridge scheduled job fires (or lender clicks "Analyze" in dashboard)
+        │
+        ▼
+POST /api/ai/risk-score { loanId, borrowerId }
+        │
+        ▼
+Step Functions pipeline starts:
+  Step 1 — Data Aggregation:
+    SELECT principal, interest_rate, duration_months, status,
+           last_payment_date, latest_risk_score
+    FROM loans WHERE id = $loanId AND lender_id = $lenderId
+
+    SELECT due_date, paid_at FROM repayment_schedule
+    WHERE loan_id = $loanId ORDER BY due_date ASC
+
+    SELECT amount, payment_date FROM payments
+    WHERE loan_id = $loanId ORDER BY payment_date DESC LIMIT 12
+        │
+        ▼
+  Step 2 — Risk Assessment:
+    Sanitize fetched data (prompt injection prevention)
+    Send to AWS Nova Pro → receive risk_score (0-100)
+        │
+        ▼
+  Step 3 — Persist Score:
+    INSERT INTO ai_insights (loan_id, lender_id, risk_score, model_id, input_params)
+    UPDATE loans SET latest_risk_score = $score WHERE id = $loanId
+    INSERT INTO notifications (type='risk_score_updated', user_id=$lenderId, loan_id=...)
+        │
+        ▼
+  Step 4 — Conditional: if risk_score > 70
+    POST /api/ai/generate-strategy { riskScore, loanTerms, borrowerContext }
+        │
+        ▼
+  Step 5 — Strategy Generation:
+    Send structured prompt to AWS Nova Pro
+    Receive Markdown recovery plan
+    INSERT INTO strategies (loan_id, lender_id, insight_id, risk_score_at_creation,
+                            content, status='draft', model_id)
+    INSERT INTO notifications (type='strategy_generated', user_id=$lenderId, loan_id=...)
+        │
+        ▼
+Lender sees updated risk badge on loan row (from loans.latest_risk_score)
+Lender sees new draft in strategy review panel (from strategies WHERE status='draft')
+```
+
+---
+
+### Flow 5: Loan Officer Reviews and Approves Strategy
+
+```
+Lender opens strategy review panel
+        │
+        ▼
+GET /api/ai/strategies/[loanId]
+  SELECT * FROM strategies
+  WHERE loan_id = $loanId AND lender_id = $lenderId
+  ORDER BY created_at DESC
+        │
+        ▼
+Lender edits strategy content (optional) and clicks "Approve"
+        │
+        ▼
+PATCH /api/ai/strategies/[strategyId]
+  UPDATE strategies
+  SET status = 'approved', approved_at = NOW(), content = $editedContent
+  WHERE id = $strategyId AND lender_id = $lenderId  ← tenant check enforced
+        │
+        ▼
+Strategy moves off the draft review queue
+Dashboard badge count updates
+```
+
+---
+
+### Flow 6: Recording a Payment
 
 ```
 Lender clicks "Record Payment" on a loan row
@@ -408,6 +564,14 @@ SES.SendEmail → mocked in v1 (toast shown in UI, email_sent stays false)
 
 **Notifications dual-purpose with SES mocked in v1** — one table drives both the in-app bell and the email audit trail. In v1 the `email_sent` flag stays `false` — no real SES call is made. A success toast in the UI simulates email delivery. Wiring real SES is a single Vercel Function change post-hackathon — the schema, the `email_sent` column, and the notification rows are all production-ready.
 
+**AI tables fully separate from core loan tables** — `ai_insights` and `strategies` are additive. The core loan lifecycle (loans, payments, repayment_schedule) works without the AI engine. AI is a layer on top, not woven into the base schema. This means the AI pipeline can be disabled or swapped without touching core data flows.
+
+**latest_risk_score cached on loans row** — the lender portfolio dashboard shows risk scores for every loan. Joining `ai_insights` for each row on every page load is expensive. Caching the latest score on `loans` keeps the dashboard query a simple SELECT. The AI pipeline keeps it in sync atomically on every write to `ai_insights`.
+
+**strategy_status as a native enum** — `draft | approved | dispatched` is enforced at the database level. The application cannot accidentally write an invalid status. Follows the same pattern as `loan_status` and `user_role`.
+
+**input_params as JSONB** — the exact data sent to AWS Nova is stored per analysis run. This is required for compliance auditing (which data produced which recommendation), model performance review, and debugging unexpected scores. JSONB allows indexed queries on specific fields if needed later (e.g. find all runs where `missed_payments > 3`).
+
 ---
 
 ## Out of Scope for Hackathon (Post-v1 Roadmap)
@@ -419,3 +583,5 @@ SES.SendEmail → mocked in v1 (toast shown in UI, email_sent stays false)
 - Payment due soon scheduled job (cron) — notif_type already defined in schema
 - Admin dashboard
 - Loan restructuring / term modification history
+- Sentiment analysis on communications (ai_insights table is ready to store additional AI output types)
+- Wiring real Amazon SES (email_sent column and notification rows are production-ready)
