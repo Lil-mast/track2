@@ -52,12 +52,21 @@ CREATE TYPE loan_status AS ENUM (
 
 -- notif_type: what triggered a notification
 CREATE TYPE notif_type AS ENUM (
-  'loan_created',       -- lender created a new loan for this borrower
-  'loan_overdue',       -- loan was flagged as overdue
-  'loan_defaulted',     -- loan status moved to defaulted
-  'loan_repaid',        -- loan fully repaid
-  'payment_received',   -- a payment was recorded
-  'payment_due_soon'    -- upcoming payment within 3 days (future cron job)
+  'loan_created',         -- lender created a new loan for this borrower
+  'loan_overdue',         -- loan was flagged as overdue
+  'loan_defaulted',       -- loan status moved to defaulted
+  'loan_repaid',          -- loan fully repaid
+  'payment_received',     -- a payment was recorded
+  'payment_due_soon',     -- upcoming payment within 3 days (future cron job)
+  'risk_score_updated',   -- AI calculated a new risk score for a loan
+  'strategy_generated'    -- AI generated a new recovery strategy draft
+);
+
+-- strategy_status: lifecycle state of an AI-generated recovery strategy
+CREATE TYPE strategy_status AS ENUM (
+  'draft',       -- AI-generated, awaiting loan officer review
+  'approved',    -- loan officer approved the strategy
+  'dispatched'   -- strategy has been sent / acted upon
 );
 
 
@@ -491,6 +500,221 @@ INSERT INTO repayment_schedule (loan_id, due_date, amount_due) VALUES
 INSERT INTO cognito_links (cognito_sub, user_id, email) VALUES
   ('REPLACE_WITH_REAL_COGNITO_SUB', 'b0000001-0000-0000-0000-000000000001', 'lender@demo.lendwise.app')
 ON CONFLICT (cognito_sub) DO NOTHING;
+
+-- =============================================================
+-- AI ENGINE TABLES
+-- =============================================================
+
+-- =============================================================
+-- COLUMN: loans.latest_risk_score
+--
+-- Cached latest risk score (0-100) on the loan row itself.
+-- Avoids a JOIN to ai_insights on every dashboard load.
+-- Updated by the AI pipeline each time a new score is written
+-- to ai_insights. NULL means no AI analysis has run yet.
+-- =============================================================
+ALTER TABLE loans ADD COLUMN latest_risk_score NUMERIC(5,2)
+  CHECK (latest_risk_score BETWEEN 0 AND 100);
+
+
+-- =============================================================
+-- TABLE: ai_insights
+--
+-- Stores every risk score the AI calculates for a loan.
+-- One row per analysis run — keeps full history for trend analysis
+-- (e.g. risk score rising over time signals worsening liquidity).
+--
+-- The AI engine reads from loans, payments, and repayment_schedule
+-- to build the borrower context, then writes the result here and
+-- updates loans.latest_risk_score for fast dashboard display.
+--
+-- input_params (JSONB): stores the sanitized data sent to the model
+-- for compliance auditing — required by the AI-DOCS specification.
+-- model_id: records exactly which Nova model version produced the score.
+-- =============================================================
+CREATE TABLE ai_insights (
+  id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Which loan this score belongs to
+  loan_id       UUID          NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+
+  -- Tenant scoping — every AI query is scoped to a lender
+  lender_id     UUID          NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+
+  -- The computed default-risk score (0 = low risk, 100 = high risk)
+  risk_score    NUMERIC(5,2)  NOT NULL CHECK (risk_score BETWEEN 0 AND 100),
+
+  -- Which model produced this score (e.g. "amazon.nova-pro-v1:0")
+  model_id      TEXT          NOT NULL,
+
+  -- Audit: sanitized input sent to the model — stored as JSONB for
+  -- compliance logging and model performance analysis
+  input_params  JSONB,
+
+  -- Audit
+  created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+-- Index: all scores for a loan (newest first — trend chart)
+CREATE INDEX idx_ai_insights_loan_id ON ai_insights(loan_id, created_at DESC);
+
+-- Index: all scores for a lender's portfolio (dashboard overview)
+CREATE INDEX idx_ai_insights_lender_id ON ai_insights(lender_id);
+
+-- Partial index: high-risk loans only (score > 70 triggers strategy generation)
+CREATE INDEX idx_ai_insights_high_risk ON ai_insights(loan_id)
+  WHERE risk_score > 70;
+
+
+-- =============================================================
+-- TABLE: strategies
+--
+-- Stores AI-drafted and lender-approved recovery plans.
+-- Implements the "Human-in-the-Loop" pattern from AI-DOCS:
+--   1. AI writes a 'draft' row
+--   2. Loan officer reviews in the dashboard
+--   3. Officer approves → status moves to 'approved', approved_at set
+--   4. Strategy is acted upon → status moves to 'dispatched'
+--
+-- content: Markdown-formatted recovery plan from AWS Nova.
+-- risk_score_at_creation: snapshot of the score that triggered
+--   this strategy — preserved even if new scores are computed later.
+-- =============================================================
+CREATE TABLE strategies (
+  id                    UUID             PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Which loan this strategy covers
+  loan_id               UUID             NOT NULL REFERENCES loans(id) ON DELETE CASCADE,
+
+  -- Tenant scoping
+  lender_id             UUID             NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+
+  -- The ai_insights row that triggered this strategy generation (optional —
+  -- allows tracing which exact score run produced which strategy)
+  insight_id            UUID             REFERENCES ai_insights(id) ON DELETE SET NULL,
+
+  -- Risk score at the time this strategy was generated (audit snapshot)
+  risk_score_at_creation NUMERIC(5,2)   CHECK (risk_score_at_creation BETWEEN 0 AND 100),
+
+  -- The full Markdown strategy text returned by AWS Nova
+  content               TEXT             NOT NULL,
+
+  -- Draft → Approved → Dispatched lifecycle
+  status                strategy_status  NOT NULL DEFAULT 'draft',
+
+  -- Which model version produced this strategy
+  model_id              TEXT             NOT NULL,
+
+  -- Set when a loan officer approves the draft
+  approved_at           TIMESTAMPTZ,
+
+  -- Audit
+  created_at            TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMPTZ      NOT NULL DEFAULT NOW()
+);
+
+-- Index: all strategies for a loan (loan detail view)
+CREATE INDEX idx_strategies_loan_id ON strategies(loan_id, created_at DESC);
+
+-- Index: lender's full strategy queue
+CREATE INDEX idx_strategies_lender_id ON strategies(lender_id);
+
+-- Partial index: only pending drafts — drives the "Review Queue" dashboard panel
+CREATE INDEX idx_strategies_drafts ON strategies(lender_id, created_at DESC)
+  WHERE status = 'draft';
+
+-- Trigger: auto-update updated_at on strategies
+CREATE TRIGGER trg_strategies_updated_at
+  BEFORE UPDATE ON strategies
+  FOR EACH ROW EXECUTE FUNCTION fn_update_updated_at();
+
+
+-- =============================================================
+-- SEED DATA: Demo AI insights and strategies
+-- Gives the demo dashboard populated AI panels out of the box.
+-- James (overdue loan) and Grace (defaulted loan) have scores
+-- that trigger strategy generation (score > 70).
+-- Alice (active) has a low score — no strategy needed.
+-- =============================================================
+
+-- AI insights for James's overdue loan — high risk, trending upward
+INSERT INTO ai_insights (loan_id, lender_id, risk_score, model_id, input_params) VALUES
+  ('c0000002-0000-0000-0000-000000000002',
+   'b0000001-0000-0000-0000-000000000001',
+   82.50,
+   'amazon.nova-pro-v1:0',
+   '{"missed_payments": 3, "days_overdue": 60, "sliding_date_trend": "increasing"}'::jsonb),
+  ('c0000002-0000-0000-0000-000000000002',
+   'b0000001-0000-0000-0000-000000000001',
+   74.00,
+   'amazon.nova-pro-v1:0',
+   '{"missed_payments": 2, "days_overdue": 30, "sliding_date_trend": "increasing"}'::jsonb);
+
+-- AI insights for Grace's defaulted loan — maximum risk
+INSERT INTO ai_insights (loan_id, lender_id, risk_score, model_id, input_params) VALUES
+  ('c0000003-0000-0000-0000-000000000003',
+   'b0000001-0000-0000-0000-000000000001',
+   95.00,
+   'amazon.nova-pro-v1:0',
+   '{"missed_payments": 3, "days_overdue": 180, "loan_status": "defaulted", "sliding_date_trend": "severe"}'::jsonb);
+
+-- AI insights for Alice's active loan — low risk
+INSERT INTO ai_insights (loan_id, lender_id, risk_score, model_id, input_params) VALUES
+  ('c0000001-0000-0000-0000-000000000001',
+   'b0000001-0000-0000-0000-000000000001',
+   18.00,
+   'amazon.nova-lite-v1:0',
+   '{"missed_payments": 0, "days_overdue": 0, "sliding_date_trend": "stable"}'::jsonb);
+
+-- Update loans.latest_risk_score from seed data
+UPDATE loans SET latest_risk_score = 82.50 WHERE id = 'c0000002-0000-0000-0000-000000000002';
+UPDATE loans SET latest_risk_score = 95.00 WHERE id = 'c0000003-0000-0000-0000-000000000003';
+UPDATE loans SET latest_risk_score = 18.00 WHERE id = 'c0000001-0000-0000-0000-000000000001';
+
+-- Draft strategy for James's overdue loan
+INSERT INTO strategies (loan_id, lender_id, risk_score_at_creation, content, status, model_id) VALUES
+  ('c0000002-0000-0000-0000-000000000002',
+   'b0000001-0000-0000-0000-000000000001',
+   82.50,
+   '## Recovery Strategy — James Otieno
+
+**Risk Level:** High (82.5/100)
+**Trigger:** 3 missed payments, 60 days overdue
+
+### Recommended Actions
+
+1. **Immediate Outreach** — Contact borrower within 24 hours via phone. Tone: empathetic, solution-focused.
+2. **Grace Period Offer** — Offer a 30-day grace period with no penalty to allow borrower to stabilize cash flow.
+3. **Restructuring Option** — If borrower cannot resume full payments, propose extending the loan term by 3 months to reduce monthly installment amount.
+4. **Payment Plan** — Offer a catch-up plan: borrower pays 50% of arrears this month and the remainder over the next 2 months.
+
+### Escalation Trigger
+If no response within 7 days, escalate to formal collections notice.',
+   'draft',
+   'amazon.nova-pro-v1:0');
+
+-- Approved strategy for Grace's defaulted loan
+INSERT INTO strategies (loan_id, lender_id, risk_score_at_creation, content, status, model_id, approved_at) VALUES
+  ('c0000003-0000-0000-0000-000000000003',
+   'b0000001-0000-0000-0000-000000000001',
+   95.00,
+   '## Recovery Strategy — Grace Muthoni
+
+**Risk Level:** Critical (95/100)
+**Trigger:** Loan status defaulted, 180 days overdue
+
+### Recommended Actions
+
+1. **Final Settlement Offer** — Offer a one-time settlement at 70% of outstanding balance to close the loan.
+2. **Asset Review** — Review any collateral associated with this loan for recovery proceedings.
+3. **Legal Referral** — If settlement is declined within 14 days, refer to legal team for formal recovery process.
+
+### Notes
+Sentiment from last communication log: unresponsive. Recommend certified mail as primary channel.',
+   'approved',
+   'amazon.nova-pro-v1:0',
+   NOW() - INTERVAL '5 days');
+
 
 -- =============================================================
 -- END OF SCHEMA
