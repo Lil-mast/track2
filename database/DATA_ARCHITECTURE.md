@@ -66,6 +66,8 @@ name          TEXT    Full name
 email         TEXT    Unique email address
 role          ENUM    'lender' | 'borrower' | 'admin'
 organization  TEXT    Lenders only — e.g. "KCB Group"
+company       TEXT    Borrowers only — borrower's business name (e.g. "Otieno Logistics Ltd")
+reference_id  TEXT    Human-readable ID for URLs and display (e.g. "BRW-1042")
 lender_id     UUID    Borrowers only — FK → users.id (their lender)
 phone         TEXT    Optional — reserved for future SMS notifications
 created_at    TIMESTAMPTZ
@@ -81,6 +83,7 @@ updated_at    TIMESTAMPTZ (auto-updated by trigger)
 - `lender_id` — fast "get all borrowers for this lender" query
 - `role` — fast role-based filtering
 - `cognito_sub` — fast JWT-to-user resolution on every request
+- `reference_id` — fast borrower URL routing lookup
 
 ---
 
@@ -314,6 +317,8 @@ lender_id              UUID             FK → users.id (tenant scoping)
 insight_id             UUID             FK → ai_insights.id (optional — which run triggered this)
 risk_score_at_creation NUMERIC(5,2)     Snapshot of score when strategy was generated
 content                TEXT             Full Markdown recovery plan from AWS Nova
+summary                TEXT             Short 1-2 sentence insight for dashboard display
+recommended_action     TEXT             Discrete action label for UI badge (e.g. "Restructuring Call")
 status                 strategy_status  draft | approved | dispatched
 model_id               TEXT             Which Nova model version drafted this
 approved_at            TIMESTAMPTZ      Set when loan officer approves
