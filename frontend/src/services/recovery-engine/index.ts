@@ -1,0 +1,81 @@
+import { mockBorrowers, mockRules, mockLenders } from "@/data/mock";
+import { loadLoanContext } from "./context-builder";
+import { calculateRiskScore } from "./risk-scorer";
+import { generateAIRecommendation } from "./ai-generator";
+import { validateAgainstRules } from "./rules-validator";
+import { logRecoveryWorkflow } from "./audit-logger";
+import type { RecoveryEngineWorkflowResult, FinalAction } from "@/types/recovery-engine";
+import { recoveryActionLabels } from "@/lib/labels";
+
+export interface RunRecoveryEngineOptions {
+  lenderId: string;
+  loanId: string;
+  requestMeta?: { ipAddress?: string; userAgent?: string };
+}
+
+export async function runRecoveryEngine(
+  options: RunRecoveryEngineOptions
+): Promise<RecoveryEngineWorkflowResult> {
+  const { lenderId, loanId, requestMeta } = options;
+
+  const context = loadLoanContext(lenderId, loanId);
+  if (!context) {
+    throw new Error(`Loan not found: ${loanId}`);
+  }
+
+  const lender = mockLenders.find((l) => l.id === lenderId);
+  if (!lender) {
+    throw new Error(`Lender not found: ${lenderId}`);
+  }
+
+  const rules = mockRules.filter((r) => r.lenderId === lenderId);
+  const borrower = mockBorrowers.find((b) => b.id === context.loan.borrowerId);
+
+  const riskAssessment = calculateRiskScore(context);
+  const aiRecommendation = generateAIRecommendation(context, riskAssessment);
+  const ruleValidation = validateAgainstRules(
+    aiRecommendation.recommendedAction,
+    context,
+    rules,
+    lender,
+    borrower?.riskScore ?? riskAssessment.score
+  );
+
+  const matchedAutoRule = ruleValidation.matchedRules.find((r) => r.autoExecute);
+
+  const finalAction: FinalAction = {
+    action: ruleValidation.finalRecoveryAction,
+    aiAction: ruleValidation.adjustedAction,
+    label: recoveryActionLabels[ruleValidation.finalRecoveryAction],
+    autoExecute:
+      !ruleValidation.requiresManualApproval &&
+      (matchedAutoRule?.autoExecute ?? false),
+    description: aiRecommendation.nextStep,
+  };
+
+  const workflowId = `wf_${Date.now()}_${loanId}`;
+
+  const result: RecoveryEngineWorkflowResult = {
+    workflowId,
+    loanId,
+    lenderId,
+    borrowerId: context.loan.borrowerId,
+    loanNumber: context.loan.loanNumber,
+    timestamp: new Date().toISOString(),
+    input: context,
+    riskAssessment,
+    aiRecommendation,
+    ruleValidation,
+    finalAction,
+    auditLogId: "",
+  };
+
+  result.auditLogId = logRecoveryWorkflow(result, requestMeta);
+
+  return result;
+}
+
+export { loadLoanContext } from "./context-builder";
+export { calculateRiskScore } from "./risk-scorer";
+export { generateAIRecommendation } from "./ai-generator";
+export { validateAgainstRules } from "./rules-validator";
