@@ -1,15 +1,12 @@
+"use client";
+
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { AppHeader } from "@/components/layout/app-header";
-import { getDataRepository } from "@/services";
+import { mockLenders } from "@/data/mock/lenders";
 import { DEFAULT_LENDER_ID } from "@/lib/constants";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const repo = getDataRepository();
-  const lender = await repo.getLender(DEFAULT_LENDER_ID);
+export function DashboardShell({ children }: { children: React.ReactNode }) {
+  const lender = mockLenders.find((item) => item.id === DEFAULT_LENDER_ID);
 
   return (
     <div className="min-h-screen bg-muted/30">

@@ -1,17 +1,18 @@
 /**
- * Future AWS integration configuration.
- * Environment variables will be loaded here when services are connected.
+ * AWS integration configuration.
+ * Values are loaded from Vercel project environment variables.
  */
 
 export const awsConfig = {
   region: process.env.AWS_REGION ?? "us-east-1",
 
   aurora: {
+    /** Legacy flag — prefer checking cluster/secret ARNs via isAuroraConfigured(). */
     enabled: process.env.AURORA_ENABLED === "true",
-    host: process.env.AURORA_HOST,
-    port: parseInt(process.env.AURORA_PORT ?? "5432", 10),
+    clusterArn: process.env.AURORA_CLUSTER_ARN,
+    secretArn: process.env.AURORA_SECRET_ARN,
     database: process.env.AURORA_DATABASE ?? "recoveriq",
-    ssl: process.env.AURORA_SSL !== "false",
+    roleArn: process.env.AWS_ROLE_ARN,
   },
 
   cognito: {
@@ -29,3 +30,12 @@ export const awsConfig = {
 } as const;
 
 export type AwsConfig = typeof awsConfig;
+
+export function isAuroraConfigured(): boolean {
+  return Boolean(
+    awsConfig.aurora.clusterArn &&
+      awsConfig.aurora.secretArn &&
+      awsConfig.aurora.database &&
+      awsConfig.aurora.roleArn
+  );
+}
