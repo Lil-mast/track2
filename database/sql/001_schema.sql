@@ -561,6 +561,9 @@ CREATE TABLE ai_insights (
   -- 0 = low risk, 100 = high risk
   risk_score    NUMERIC(5,2)  NOT NULL CHECK (risk_score BETWEEN 0 AND 100),
 
+  -- AI explanation for the score — written by Nova alongside the numeric value
+  reasoning     TEXT,
+
   -- e.g. "amazon.nova-pro-v1:0" — for compliance audit trail
   model_id      TEXT          NOT NULL,
 
