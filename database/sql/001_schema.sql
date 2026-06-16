@@ -931,6 +931,164 @@ VALUES
 ON CONFLICT DO NOTHING;
 
 
+-- ── Payments ──────────────────────────────────────────────────
+-- Alice: 1 payment made (first installment)
+INSERT INTO payments (loan_id, borrower_id, amount, payment_date, status, payment_method, confirmation_number, notes) VALUES
+  ('c0000001-0000-0000-0000-000000000001',
+   'b0000002-0000-0000-0000-000000000002',
+   1312.50, NOW() - INTERVAL '30 days',
+   'paid', 'M-Pesa', 'MPE-A001-0001',
+   'First instalment paid on time via M-Pesa.');
+
+-- David: 6 payments — all completed (loan is paid_off)
+INSERT INTO payments (loan_id, borrower_id, amount, payment_date, status, payment_method, confirmation_number, notes) VALUES
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '200 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0001', 'Instalment 1 of 6'),
+
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '169 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0002', 'Instalment 2 of 6'),
+
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '140 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0003', 'Instalment 3 of 6'),
+
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '110 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0004', 'Instalment 4 of 6'),
+
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '79 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0005', 'Instalment 5 of 6'),
+
+  ('c0000004-0000-0000-0000-000000000004',
+   'b0000005-0000-0000-0000-000000000005',
+   520.00, NOW() - INTERVAL '50 days',
+   'paid', 'Bank Transfer', 'BNK-D001-0006', 'Final instalment — loan fully repaid.');
+
+-- James: 1 partial payment early on, then stopped (overdue)
+INSERT INTO payments (loan_id, borrower_id, amount, payment_date, status, payment_method, confirmation_number, notes) VALUES
+  ('c0000002-0000-0000-0000-000000000002',
+   'b0000003-0000-0000-0000-000000000003',
+   800.00, NOW() - INTERVAL '88 days',
+   'partial', 'M-Pesa', 'MPE-J002-0001',
+   'Partial payment — borrower cited cash flow issues. Remaining KES 679.17 unpaid.');
+
+-- Grace: no payments at all — loan defaulted after 3 missed
+-- (no INSERT — zero payment history is intentional for this borrower)
+
+
+-- ── Notifications ─────────────────────────────────────────────
+INSERT INTO notifications (user_id, loan_id, type, title, body, read, email_sent) VALUES
+
+  -- Loan created notifications
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000001-0000-0000-0000-000000000001',
+   'loan_created',
+   'New loan created for Alice Wanjiru',
+   'A new loan of KES 15,000 at 9.5% for 12 months has been created for Alice Wanjiru (Wanjiru Enterprises).',
+   TRUE, FALSE),
+
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000002-0000-0000-0000-000000000002',
+   'loan_created',
+   'New loan created for James Otieno',
+   'A new loan of KES 8,500 at 12% for 6 months has been created for James Otieno (Otieno Logistics Ltd).',
+   TRUE, FALSE),
+
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000003-0000-0000-0000-000000000003',
+   'loan_created',
+   'New loan created for Grace Muthoni',
+   'A new loan of KES 5,000 at 18.5% for 3 months has been created for Grace Muthoni (Muthoni Textiles).',
+   TRUE, FALSE),
+
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000004-0000-0000-0000-000000000004',
+   'loan_created',
+   'New loan created for David Kamau',
+   'A new loan of KES 3,000 at 7.2% for 6 months has been created for David Kamau (Kamau Dairy Co.).',
+   TRUE, FALSE),
+
+  -- Payment received — Alice instalment 1
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000001-0000-0000-0000-000000000001',
+   'payment_received',
+   'Payment received from Alice Wanjiru',
+   'KES 1,312.50 received from Alice Wanjiru via M-Pesa (ref: MPE-A001-0001). Instalment 1 of 12 marked paid.',
+   TRUE, FALSE),
+
+  -- Payment received — David all 6
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000004-0000-0000-0000-000000000004',
+   'payment_received',
+   'Payment received from David Kamau',
+   'KES 520.00 received from David Kamau via Bank Transfer (ref: BNK-D001-0006). Final instalment paid.',
+   TRUE, FALSE),
+
+  -- Loan repaid — David
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000004-0000-0000-0000-000000000004',
+   'loan_repaid',
+   'Loan fully repaid by David Kamau',
+   'All 6 instalments have been paid. Loan LN-1004 for David Kamau (Kamau Dairy Co.) is now closed.',
+   TRUE, FALSE),
+
+  -- Loan overdue — James
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000002-0000-0000-0000-000000000002',
+   'loan_overdue',
+   'Loan overdue — James Otieno',
+   'Loan LN-1002 for James Otieno (Otieno Logistics Ltd) is 60 days overdue with 3 missed payments totalling KES 4,437.51.',
+   FALSE, FALSE),
+
+  -- Loan defaulted — Grace
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000003-0000-0000-0000-000000000003',
+   'loan_defaulted',
+   'Loan defaulted — Grace Muthoni',
+   'Loan LN-1003 for Grace Muthoni (Muthoni Textiles) has been marked as defaulted after 180 days with no payments received.',
+   FALSE, FALSE),
+
+  -- Risk score updated — James
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000002-0000-0000-0000-000000000002',
+   'risk_score_updated',
+   'Risk score updated — James Otieno',
+   'AI risk score for loan LN-1002 (James Otieno) has increased to 82.5/100 (High Risk). Immediate action recommended.',
+   FALSE, FALSE),
+
+  -- Risk score updated — Grace
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000003-0000-0000-0000-000000000003',
+   'risk_score_updated',
+   'Risk score updated — Grace Muthoni',
+   'AI risk score for loan LN-1003 (Grace Muthoni) is 95/100 (Critical Risk). Escalation strategy has been generated.',
+   FALSE, FALSE),
+
+  -- Strategy generated — James
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000002-0000-0000-0000-000000000002',
+   'strategy_generated',
+   'Recovery strategy ready for review — James Otieno',
+   'AI has generated a restructuring strategy for loan LN-1002 (James Otieno). Review and approve in the Recovery panel.',
+   FALSE, FALSE),
+
+  -- Strategy generated — Grace
+  ('b0000001-0000-0000-0000-000000000001',
+   'c0000003-0000-0000-0000-000000000003',
+   'strategy_generated',
+   'Recovery strategy approved — Grace Muthoni',
+   'Escalation-to-collections strategy for loan LN-1003 (Grace Muthoni) has been approved and is ready to dispatch.',
+   TRUE, FALSE);
+
+
 -- =============================================================
 -- END OF SCHEMA
 -- =============================================================
