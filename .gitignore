@@ -38,3 +38,13 @@ yarn-error.log*
 next-env.d.ts
 
 .kiro
+
+# cdk / infra artifacts (belt-and-suspenders; infra/.gitignore also covers these)
+cdk.out/
+infra/cdk.out/
+infra/cdk.context.json
+infra/*.js
+infra/**/*.js
+infra/*.d.ts
+infra/**/*.d.ts
+infra/node_modules/
