@@ -64,7 +64,7 @@ export async function generateStrategyHandler(req: NextRequest) {
   } catch (error: any) {
     console.error("Strategy Generation Handler Error:", error);
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
+      return NextResponse.json({ error: error.issues }, { status: 400 });
     }
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }

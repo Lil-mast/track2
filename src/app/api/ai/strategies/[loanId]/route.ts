@@ -3,7 +3,8 @@ import { getStrategiesHandler } from "@/ai-engine/handlers/get-strategies";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { loanId: string } }
+  { params }: { params: Promise<{ loanId: string }> }
 ) {
-  return getStrategiesHandler(req, { params });
+  const { loanId } = await params;
+  return getStrategiesHandler(req, { params: { loanId } });
 }

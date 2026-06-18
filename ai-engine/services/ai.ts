@@ -24,7 +24,11 @@ export const sanitizeForAI = (data: any): string => {
   return `<data>${sanitized}</data>`;
 };
 
-export const invokeNova = async (systemPrompt: string, userPrompt: string, modelId: string = "amazon.nova-pro-v1:0") => {
+export const invokeNova = async (
+  systemPrompt: string,
+  userPrompt: string,
+  modelId: string = "amazon.nova-pro-v1:0"
+): Promise<string> => {
   try {
     const command = new InvokeModelCommand({
       modelId,
