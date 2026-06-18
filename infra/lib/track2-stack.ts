@@ -33,7 +33,7 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 // Vercel team namespace. Used to build the OIDC issuer URL and the
 // trust-policy claim conditions.
 const VERCEL_TEAM_SLUG = "tazos-projects-e0fd6b75";
-const VERCEL_PROJECT_NAME = "track2";
+const VERCEL_PROJECT_NAME = "RecoveryAI";
 const VERCEL_OIDC_ISSUER = `oidc.vercel.com/${VERCEL_TEAM_SLUG}`;
 const VERCEL_OIDC_AUDIENCE = `https://vercel.com/${VERCEL_TEAM_SLUG}`;
 
