@@ -1,7 +1,21 @@
 node_modules
 .env
-dist
-package-lock.json
-.DS_Store
-.idea
-.next
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+.kiro
+
+# cdk / infra artifacts (belt-and-suspenders; infra/.gitignore also covers these)
+cdk.out/
+infra/cdk.out/
+infra/cdk.context.json
+infra/*.js
+infra/**/*.js
+infra/*.d.ts
+infra/**/*.d.ts
+infra/node_modules/

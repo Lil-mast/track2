@@ -1,0 +1,31 @@
+{
+  "name": "track2-infra",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "track2-infra": "bin/track2.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff",
+    "destroy": "cdk destroy",
+    "migrate": "node scripts/migrate.mjs",
+    "create-app-user": "node scripts/create-app-user.mjs",
+    "verify-app-user": "node scripts/verify-app-user.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "aws-cdk": "^2.170.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-rds-data": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.700.0",
+    "aws-cdk-lib": "^2.170.0",
+    "constructs": "^10.4.2"
+  }
+}
