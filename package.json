@@ -1,0 +1,4 @@
+// MIGRATE FROM: frontend/package.json
+// Move to project root — this becomes the Vercel project package.json
+// ADD to dependencies: @aws-sdk/client-bedrock-runtime, @aws-sdk/client-rds-data, zod
+// REMOVE from devDependencies: nothing frontend-related needs to change
