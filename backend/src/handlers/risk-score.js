@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/ai-engine/services/db";
-import { invokeNova, sanitizeForAI } from "@/ai-engine/services/ai";
+import { query } from "../services/db.js";
+import { invokeNova, sanitizeForAI } from "../services/ai.js";
 import { z } from "zod";
 
 const requestSchema = z.object({
@@ -9,10 +8,9 @@ const requestSchema = z.object({
   lenderId: z.string().uuid(),
 });
 
-export async function riskScoreHandler(req: NextRequest) {
+export const calculateRiskScore = async (req, res) => {
   try {
-    const body = await req.json();
-    const validatedData = requestSchema.parse(body);
+    const validatedData = requestSchema.parse(req.body);
     const { loanId, borrowerId, lenderId } = validatedData;
 
     const loanDataResult = await query(
@@ -24,7 +22,7 @@ export async function riskScoreHandler(req: NextRequest) {
     );
 
     if (loanDataResult.rowCount === 0) {
-      return NextResponse.json({ error: "Loan not found or unauthorized" }, { status: 404 });
+      return res.status(404).json({ error: "Loan not found or unauthorized" });
     }
 
     const loan = loanDataResult.rows[0];
@@ -43,8 +41,7 @@ export async function riskScoreHandler(req: NextRequest) {
     const sanitizedContext = sanitizeForAI(aiInput);
 
     const systemPrompt = "You are a senior financial risk analyst. Analyze the provided borrower data and repayment history to calculate a dynamic risk score (0-100). Provide a concise reasoning for the score, focusing on payment trends, delays, and liquidity signals. Format your response as JSON: { \"risk_score\": number, \"reasoning\": \"string\" }";
-    const userPrompt = `Analyze the following borrower data for default risk. 
-    ${sanitizedContext}`;
+    const userPrompt = `Analyze the following borrower data for default risk.\n${sanitizedContext}`;
 
     const aiResponse = await invokeNova(systemPrompt, userPrompt);
     
@@ -60,17 +57,17 @@ export async function riskScoreHandler(req: NextRequest) {
       [loanId, risk_score, reasoning, "amazon.nova-pro-v1:0"]
     );
 
-    return NextResponse.json({
+    return res.json({
       success: true,
       riskScore: risk_score,
       reasoning,
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Risk Score Handler Error:", error);
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
+      return res.status(400).json({ error: error.errors });
     }
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
-}
+};
