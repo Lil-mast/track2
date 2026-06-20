@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/ai-engine/services/db";
-import { invokeNova, sanitizeForAI } from "@/ai-engine/services/ai";
+import { query } from "../services/db.js";
+import { invokeNova, sanitizeForAI } from "../services/ai.js";
 import { z } from "zod";
 
 const requestSchema = z.object({
@@ -9,10 +8,9 @@ const requestSchema = z.object({
   lenderId: z.string().uuid(),
 });
 
-export async function generateStrategyHandler(req: NextRequest) {
+export const generateStrategy = async (req, res) => {
   try {
-    const body = await req.json();
-    const validatedData = requestSchema.parse(body);
+    const validatedData = requestSchema.parse(req.body);
     const { loanId, riskScore, lenderId } = validatedData;
 
     const loanResult = await query(
@@ -24,7 +22,7 @@ export async function generateStrategyHandler(req: NextRequest) {
     );
 
     if (loanResult.rowCount === 0) {
-      return NextResponse.json({ error: "Loan not found" }, { status: 404 });
+      return res.status(404).json({ error: "Loan not found" });
     }
 
     const loan = loanResult.rows[0];
@@ -37,8 +35,7 @@ export async function generateStrategyHandler(req: NextRequest) {
     const sanitizedContext = sanitizeForAI(context);
 
     const systemPrompt = "You are a specialized loan recovery strategist. Your goal is to draft a empathetic yet firm recovery plan for a borrower at risk of default. The strategy should include: 1. A summary of the situation, 2. Recommended outreach channel and tone, 3. A proposed restructuring or repayment plan (e.g., grace period, extended term, or reduced installments), and 4. A draft message/script for the borrower. Format the entire strategy in Markdown.";
-    const userPrompt = `Generate a recovery strategy for the following borrower context and risk score.
-    ${sanitizedContext}`;
+    const userPrompt = `Generate a recovery strategy for the following borrower context and risk score.\n${sanitizedContext}`;
 
     const strategyContent = await invokeNova(systemPrompt, userPrompt);
 
@@ -51,7 +48,7 @@ export async function generateStrategyHandler(req: NextRequest) {
 
     const newStrategy = insertResult.rows[0];
 
-    return NextResponse.json({
+    return res.json({
       success: true,
       strategy: {
         id: newStrategy.id,
@@ -61,11 +58,11 @@ export async function generateStrategyHandler(req: NextRequest) {
       },
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("Strategy Generation Handler Error:", error);
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors }, { status: 400 });
+      return res.status(400).json({ error: error.errors });
     }
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
-}
+};

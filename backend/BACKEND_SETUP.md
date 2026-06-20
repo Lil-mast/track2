@@ -1,82 +1,95 @@
-# Backend Setup & Functionality Guide
+# RecoveryAI Backend Setup (Node.js/Express)
 
-This document provides a comprehensive overview of the RecoveryAI backend architecture, its core functionalities, and instructions on how to set up and run the environment.
+This backend has been migrated from Next.js to a standard Node.js application using the Express framework and JavaScript (ES Modules).
 
-## 🏗️ Architecture Overview
+## Prerequisites
 
-The RecoveryAI backend is built with **Next.js (App Router)** and designed to be a secure orchestrator between the frontend, the database, and AI services.
+- Node.js (v18 or higher)
+- pnpm (recommended) or npm
+- AWS Account with access to Aurora Serverless (Data API) and Amazon Bedrock
 
-### Core Tech Stack
-| Component | Technology |
-|---|---|
-| **Package Manager** | **pnpm** |
-| **API Runtime** | Vercel Functions (Node.js) via Next.js |
-| **Database** | AWS Aurora PostgreSQL (Serverless v2) |
-| **Authentication** | AWS Cognito (Lender Dashboard) |
-| **AI Engine** | AWS Bedrock (Nova Pro & Nova Lite) |
+## Directory Structure
 
----
-
-## 📂 Backend Structure
-
-The entire backend application is consolidated within this `backend/` directory:
-
-- **`ai-engine/`**: The heart of the platform's intelligence.
-    - `handlers/`: Pure business logic for AI operations.
-    - `services/`: Low-level utilities for Bedrock and DB connections.
-    - `sql/`: AI-specific database schemas.
-- **`database/`**: General database documentation and core schemas.
-- **`app/`**: Next.js application directory containing API routes and layout.
-    - `app/api/ai/`: API routes that delegate to handlers.
-
----
-
-## 🗄️ AWS Aurora Database
-
-We use **AWS Aurora PostgreSQL** for its serverless scalability and relational integrity.
-
-### Schema Management
-Apply the schemas from within the `backend/` directory:
-1.  **Core Schema**: `database/sql/001_schema.sql`
-2.  **AI Schema**: `ai-engine/sql/schema.sql`
-
----
-
-## 🤖 AI Engine Functionality
-
-The AI Engine utilizes **AWS Nova** models (Pro/Lite) via AWS Bedrock. It features:
-- **Risk Scoring**: payment trend analysis.
-- **Strategy Generation**: Markdown-formatted recovery plans.
-- **Fallback**: Automatic switch to Nova Lite during Pro throttling.
-
----
-
-## 🚀 Setup & Execution
-
-**All commands must be run from within the `backend/` directory.**
-
-### 1. Install Dependencies
-```bash
-pnpm install
+```text
+backend/
+├── src/
+│   ├── index.js          # Entry point and Express app configuration
+│   ├── handlers/         # API route handlers
+│   │   ├── generate-strategy.js
+│   │   ├── get-strategies.js
+│   │   └── risk-score.js
+│   └── services/         # Shared services (Database, AI)
+│       ├── ai.js
+│       └── db.js
+├── .env                  # Environment variables
+├── package.json          # Dependencies and scripts
+└── ...
 ```
 
-### 2. Configure Environment
-Create a `.env` file in the `backend/` directory (refer to `.env.example`).
+## Setup Instructions
 
-### 3. Initialize Database
-```bash
-# configure to AWS Aurora
-psql $DATABASE_URL -f database/sql/001_schema.sql
-psql $DATABASE_URL -f ai-engine/sql/schema.sql
-```
+1.  **Install Dependencies:**
+    ```bash
+    pnpm install
+    ```
 
-### 4. Run Development Server
-```bash
-pnpm dev
-```
-The application will be available at `http://localhost:3000`.
+2.  **Environment Variables:**
+    Create a `.env` file in the `backend/` directory with the following variables:
+    ```env
+    # --- AWS Credentials ---
+    AWS_REGION=us-east-1
+    AWS_ACCESS_KEY_ID=your_access_key
+    AWS_SECRET_ACCESS_KEY=your_secret_key
 
----
+    # --- Aurora Database (Data API) ---
+    AURORA_CLUSTER_ARN=arn:aws:rds:region:account:cluster/cluster-name
+    AURORA_SECRET_ARN=arn:aws:secretsmanager:region:account:secret:secret-name
+    AURORA_DATABASE=recoveryai
+    ```
 
-## 🧪 Testing
-See **`ai-engine/TESTING.md`** for detailed API testing instructions and `curl` examples.
+    > **⚠️ Production Security Note:**  
+    > Using `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` directly is acceptable for local development, but is a **security risk for production deployments**. In production, prefer:
+    > - **IAM Roles** (for EC2, ECS, Lambda, etc.) — the AWS SDK will automatically pick up credentials from the instance metadata.
+    > - **AWS SSO / Temporary credentials** via `AWS_SESSION_TOKEN`.
+    > - **Environment injection** by your CI/CD pipeline (e.g., GitHub Actions OIDC, AWS CodeBuild).
+    >
+    > Never commit long-lived access keys to source control.
+
+3.  **Running the Server:**
+    -   Development mode (with auto-reload):
+        ```bash
+        pnpm dev
+        ```
+    -   Production mode:
+        ```bash
+        pnpm start
+        ```
+
+## Database
+
+This backend connects to **Amazon Aurora Serverless v2** via the **RDS Data API** (`@aws-sdk/client-rds-data`). It does **not** use a direct PostgreSQL driver like `pg` — all queries are sent through the Data API using the cluster and secret ARNs.
+
+The `db.js` service automatically validates that `AURORA_CLUSTER_ARN` and `AURORA_SECRET_ARN` are present at startup and will log a clear error if they are missing.
+
+## API Routes
+
+-   `POST /api/ai/risk-score`: Calculates a dynamic risk score for a borrower.
+-   `POST /api/ai/generate-strategy`: Generates an AI-powered recovery strategy for a loan.
+-   `GET /api/ai/strategies/:loanId`: Retrieves all strategies associated with a specific loan.
+-   `GET /health`: Basic health check endpoint.
+
+## AI Engine
+
+The backend integrates with **AWS Bedrock (Amazon Nova Pro)** to perform risk analysis and strategy generation. Serverless foundation models are automatically enabled across all AWS commercial regions when first invoked, so no manual activation in the Bedrock console is required.
+
+### Security
+
+The AI service includes multi-layered sanitization to protect against prompt injection attacks:
+- **Input length limiting** — truncates excessively long payloads.
+- **Unicode normalization** — strips zero-width and invisible characters used for obfuscation.
+- **Pattern-based redaction** — detects and redacts 30+ known injection techniques including role hijacking, delimiter injection, encoding tricks, and data exfiltration attempts.
+- **XML boundary wrapping** — clearly delineates user-supplied data from system instructions.
+
+### Resilience
+
+Automatic fallback to **Nova Lite** in case of throttling or service unavailability.
