@@ -5,6 +5,45 @@
 
 ---
 
+## Current State on `migration` Branch
+
+The following work is **already done** on this branch. Team members do not need to repeat these steps:
+
+| What | Status |
+|---|---|
+| Root `package.json` with all deps including `@aws-sdk/client-rds-data` | ✅ Done |
+| `next.config.ts`, `tsconfig.json`, `tailwind.config.ts`, `postcss.config.mjs` at root | ✅ Done |
+| `src/app/layout.tsx` + `src/app/globals.css` — real root layout | ✅ Done |
+| `src/lib/constants.ts` — real constants | ✅ Done |
+| `src/app/(dashboard)/layout.tsx` — minimal stub (replace with real one in Step 1) | ✅ Done (stub) |
+| All skeleton page and route stubs in `src/` — valid exports, return null or 501 | ✅ Done (stubs — replace with real code) |
+| Demo pipeline — `/demo` page + `/api/demo/aurora-ping` route | ✅ Done — working, tested |
+| `.gitignore` updated — `.env.local`, `.env*.local`, `.next/` excluded | ✅ Done |
+
+The `frontend/ backend/` directory still exists and is untouched. Steps 1–9 below describe what the team needs to complete.
+
+---
+
+## Demo Pipeline (Aurora Wake-Up Demo)
+
+**Two files exist solely to demonstrate the full pipeline end-to-end:**
+
+```
+src/app/(dashboard)/demo/page.tsx         ← "Good Morning Aurora" button page
+src/app/api/demo/aurora-ping/route.ts     ← GET route, runs SELECT NOW() against Aurora
+```
+
+These are **not part of the real application**. They prove the Vercel → Next.js API Route → RDS Data API → Aurora Serverless v2 pipeline works before the real migration is complete.
+
+The demo handles Aurora's 0 ACU cold start gracefully:
+- API route returns `HTTP 202` when Aurora is still resuming (not an error)
+- Frontend detects `202`, shows a waking animation, retries with exponential backoff (3s → 4.5s → ... capped at 15s, up to 12 attempts ~2 min total)
+- On success shows server time, database name, total elapsed time, and attempt count
+
+**Remove both files once the real `AuroraDataRepository` is wired in (after Steps 4 + 6).**
+
+---
+
 ## Why This Migration Is Needed
 
 The current project has three separate packages:
@@ -49,21 +88,26 @@ track2/                                  ← Vercel root (Next.js project root)
 │   │   │   │   └── [id]/page.tsx
 │   │   │   ├── rules/
 │   │   │   │   └── page.tsx
-│   │   │   └── audit-logs/
-│   │   │       └── page.tsx
+│   │   │   ├── audit-logs/
+│   │   │   │   └── page.tsx
+│   │   │   └── demo/                    ← DEMO ONLY — delete after Steps 4 + 6
+│   │   │       └── page.tsx             ← Aurora wake-up demo page
 │   │   │
 │   │   ├── api/
 │   │   │   ├── recovery/
 │   │   │   │   └── recommend/
 │   │   │   │       └── route.ts         ← KEEP AS-IS (already Next.js)
-│   │   │   └── ai/                      ← NEW — migrated from backend/
-│   │   │       ├── risk-score/
-│   │   │       │   └── route.ts         ← FROM backend/src/handlers/risk-score.js
-│   │   │       ├── generate-strategy/
-│   │   │       │   └── route.ts         ← FROM backend/src/handlers/generate-strategy.js
-│   │   │       └── strategies/
-│   │   │           └── [loanId]/
-│   │   │               └── route.ts     ← FROM backend/src/handlers/get-strategies.js
+│   │   │   ├── ai/                      ← NEW — migrated from backend/
+│   │   │   │   ├── risk-score/
+│   │   │   │   │   └── route.ts         ← FROM backend/src/handlers/risk-score.js
+│   │   │   │   ├── generate-strategy/
+│   │   │   │   │   └── route.ts         ← FROM backend/src/handlers/generate-strategy.js
+│   │   │   │   └── strategies/
+│   │   │   │       └── [loanId]/
+│   │   │   │           └── route.ts     ← FROM backend/src/handlers/get-strategies.js
+│   │   │   └── demo/                    ← DEMO ONLY — delete after Steps 4 + 6
+│   │   │       └── aurora-ping/
+│   │   │           └── route.ts         ← delete once AuroraDataRepository is wired in
 │   │   │
 │   │   ├── globals.css                  ← KEEP AS-IS
 │   │   └── layout.tsx                   ← KEEP AS-IS
@@ -158,7 +202,7 @@ track2/                                  ← Vercel root (Next.js project root)
 ├── postcss.config.mjs                   ← FROM frontend/postcss.config.mjs
 ├── components.json                      ← FROM frontend/components.json
 ├── eslint.config.mjs                    ← FROM frontend/eslint.config.mjs
-├── .env.local                           ← Aurora ARNs + role ARN (from CDK outputs)
+├── .env.local                           ← gitignored — project owner only, not needed by team
 ├── .gitignore                           ← FROM frontend/.gitignore
 └── MIGRATION.md                         ← This file
 ```
@@ -193,12 +237,12 @@ npm run build
 
 ---
 
-### Step 2 — Add AWS SDK dependencies (Frontend Dev)
+### Step 2 — Add remaining AWS SDK dependencies (Frontend Dev)
 
-The Next.js app needs the AWS SDK packages that currently live only in the backend. Add them to the root `package.json`:
+`@aws-sdk/client-rds-data` is already in `package.json` (added on the migration branch). Add the remaining packages needed for Bedrock and Zod validation:
 
 ```bash
-npm install @aws-sdk/client-bedrock-runtime @aws-sdk/client-rds-data zod
+npm install @aws-sdk/client-bedrock-runtime zod
 ```
 
 ---
@@ -300,15 +344,11 @@ This means local dev without AWS credentials still works on mock data. Productio
 
 ---
 
-### Step 7 — Set environment variables
+### Step 7 — Set environment variables (Vercel Dashboard only)
 
-There are two separate concerns here: **Vercel production** and **local development**.
+**Aurora is only accessible from Vercel production.** The AWS IAM role is locked to Vercel OIDC federation — team members cannot access Aurora locally. Local development always runs on mock data. No `.env.local` setup is needed.
 
-#### Vercel Dashboard (production)
-
-These vars must be set in **Vercel Dashboard → Project → Settings → Environment Variables**. They are injected automatically at build and runtime — never stored in the repo.
-
-Values come from CDK stack outputs. Run `npx cdk deploy` in `infra/` to get them.
+All variables are set once in **Vercel Dashboard → Project → Settings → Environment Variables** by the project owner. They are already configured. This step is listed for reference only.
 
 | Variable | Value | Source |
 |---|---|---|
@@ -316,26 +356,12 @@ Values come from CDK stack outputs. Run `npx cdk deploy` in `infra/` to get them
 | `BEDROCK_REGION` | `us-east-1` | hardcoded (Nova Pro requirement) |
 | `AWS_ROLE_ARN` | `arn:aws:iam::...` | CDK output: `VercelRoleArn` |
 | `AURORA_CLUSTER_ARN` | `arn:aws:rds:...` | CDK output: `AuroraClusterArn` |
-| `AURORA_SECRET_ARN` | `arn:aws:secretsmanager:...` | CDK output: `AppUserSecretArn` (**app-user only**) |
+| `AURORA_SECRET_ARN` | `arn:aws:secretsmanager:...` | CDK output: `AppUserSecretArn` (**app-user only, NOT master**) |
 | `AURORA_DATABASE` | `recoveryai` | CDK output: `AuroraDatabaseName` |
 | `AURORA_ENABLED` | `true` | — |
 | `BEDROCK_ENABLED` | `true` | — |
 
-> **Important:** Never put the master secret ARN (`track2/db-credentials`) in Vercel. That secret is for local migration scripts only. Use `AppUserSecretArn` for `AURORA_SECRET_ARN`.
-
-#### `.env.local` (local development only)
-
-**Aurora is not accessible locally — this is by design.**
-
-The CDK stack (`infra/lib/track2-stack.ts`) grants Aurora Data API access exclusively through Vercel OIDC federation. The IAM role trust policy is locked to:
-
-```
-owner:tazos-projects-e0fd6b75:project:RecoveryAI:environment:production
-```
-
-Only a Vercel production deployment can obtain that OIDC token and assume the role. A local machine cannot. There are no long-lived AWS access keys that could bypass this — that is intentional security design.
-
-**Local development always runs on mock data.** The `.env.local` file has all feature flags set to `false`. Do not attempt to set `AURORA_ENABLED=true` locally — it will fail at the AWS credential step regardless.
+> **For team members:** You do not need to do anything for this step. Run locally with mock data (`AURORA_ENABLED` not set = mock). Deploy to Vercel to test against real Aurora.
 
 ---
 
