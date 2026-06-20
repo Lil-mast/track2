@@ -1,2 +1,7 @@
-// MIGRATE FROM: frontend/next.config.ts
-// Move to project root — no changes needed
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+};
+
+export default nextConfig;

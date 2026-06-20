@@ -1,2 +1,9 @@
-// MIGRATE FROM: frontend/postcss.config.mjs
-// Move to project root — no changes needed
+/** @type {import('postcss-load-config').Config} */
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+export default config;
