@@ -11,11 +11,24 @@
  * MIGRATION.md Step 5.
  * ============================================================
  *
+ * CREDENTIALS — two environments, two mechanisms:
+ *
+ *   On Vercel:  there are NO static AWS keys. Vercel issues an OIDC
+ *               token per request; we exchange it for temporary AWS
+ *               credentials by assuming AWS_ROLE_ARN. This is done by
+ *               awsCredentialsProvider() from @vercel/functions/oidc.
+ *               Requires OIDC enabled in Vercel project settings AND
+ *               the CDK trust policy to match this deployment's
+ *               project + environment (see infra/lib/track2-stack.ts).
+ *
+ *   Locally:    AWS_ROLE_ARN is not set, so we fall back to the SDK
+ *               default credential chain (your ~/.aws/credentials).
+ *
  * Response codes:
  *   200 — Aurora is awake, query succeeded
  *   202 — Aurora is still resuming from 0 ACU, client should retry
  *   503 — env vars not configured
- *   500 — unexpected error
+ *   500 — unexpected error (e.g. credentials / role assumption failed)
  */
 
 import { NextResponse } from "next/server";
@@ -23,13 +36,30 @@ import {
   RDSDataClient,
   ExecuteStatementCommand,
 } from "@aws-sdk/client-rds-data";
-
-const rdsClient = new RDSDataClient({
-  region: process.env.AWS_REGION ?? "eu-west-2",
-});
+import { awsCredentialsProvider } from "@vercel/functions/oidc";
 
 /** RDS error message fragment Aurora sends when resuming from 0 ACU */
 const RESUMING_FRAGMENT = "is resuming after being auto-paused";
+
+/**
+ * Build an RDS Data API client appropriate for the runtime environment.
+ *  - Vercel (AWS_ROLE_ARN set): assume the role via Vercel OIDC token
+ *  - Local (no AWS_ROLE_ARN):   use the default credential chain
+ */
+function buildClient(): RDSDataClient {
+  const region = process.env.AWS_REGION ?? "eu-west-2";
+  const roleArn = process.env.AWS_ROLE_ARN;
+
+  if (roleArn) {
+    return new RDSDataClient({
+      region,
+      credentials: awsCredentialsProvider({ roleArn }),
+    });
+  }
+
+  // Local dev — SDK picks up ~/.aws/credentials
+  return new RDSDataClient({ region });
+}
 
 export async function GET() {
   const resourceArn = process.env.AURORA_CLUSTER_ARN;
@@ -52,6 +82,8 @@ export async function GET() {
   const startedAt = Date.now();
 
   try {
+    const rdsClient = buildClient();
+
     const command = new ExecuteStatementCommand({
       resourceArn,
       secretArn,
