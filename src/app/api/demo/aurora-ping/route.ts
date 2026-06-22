@@ -42,12 +42,26 @@ import { awsCredentialsProvider } from "@vercel/functions/oidc";
 const RESUMING_FRAGMENT = "is resuming after being auto-paused";
 
 /**
+ * Extract the AWS region from an ARN.
+ * ARN format: arn:partition:service:REGION:account:resource
+ * We derive the RDS client region from the cluster ARN itself so it can
+ * never mismatch — Aurora is in eu-west-2 while AWS_REGION may be set to
+ * us-east-1 for Bedrock (Nova Pro). Reading the region from the ARN avoids
+ * that conflict entirely.
+ */
+function regionFromArn(arn: string): string {
+  const parts = arn.split(":");
+  return parts[3] || "eu-west-2";
+}
+
+/**
  * Build an RDS Data API client appropriate for the runtime environment.
  *  - Vercel (AWS_ROLE_ARN set): assume the role via Vercel OIDC token
  *  - Local (no AWS_ROLE_ARN):   use the default credential chain
+ * Region is derived from the cluster ARN so it always matches Aurora.
  */
-function buildClient(): RDSDataClient {
-  const region = process.env.AWS_REGION ?? "eu-west-2";
+function buildClient(clusterArn: string): RDSDataClient {
+  const region = regionFromArn(clusterArn);
   const roleArn = process.env.AWS_ROLE_ARN;
 
   if (roleArn) {
@@ -82,7 +96,7 @@ export async function GET() {
   const startedAt = Date.now();
 
   try {
-    const rdsClient = buildClient();
+    const rdsClient = buildClient(resourceArn);
 
     const command = new ExecuteStatementCommand({
       resourceArn,
