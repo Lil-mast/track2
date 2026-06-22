@@ -1,14 +1,23 @@
-/**
- * Dashboard layout — minimal version to support the demo page.
- *
- * DEMO NOTE: This is intentionally bare — no sidebar, no header.
- * The real dashboard layout lives in frontend/src/app/(dashboard)/layout.tsx
- * and should be migrated here following MIGRATION.md Step 1.
- */
-export default function DashboardLayout({
+import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppHeader } from "@/components/layout/app-header";
+import { getDataRepository } from "@/services";
+import { DEFAULT_LENDER_ID } from "@/lib/constants";
+
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  const repo = getDataRepository();
+  const lender = await repo.getLender(DEFAULT_LENDER_ID);
+
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <AppSidebar lenderName={lender?.name} />
+      <div className="lg:pl-64">
+        <AppHeader />
+        <main className="p-4 lg:p-6">{children}</main>
+      </div>
+    </div>
+  );
 }

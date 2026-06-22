@@ -4,9 +4,7 @@ import type { IDataRepository } from "./interfaces/IDataRepository";
 
 /**
  * Data access layer entry point.
- *
- * AURORA_ENABLED=true  → AuroraDataRepository  Vercel)
- * unset / anything else → MockDataRepository  
+ * Uses Aurora when AURORA_ENABLED=true; otherwise mock data for local dev.
  */
 export function getDataRepository(): IDataRepository {
   if (process.env.AURORA_ENABLED === "true") {

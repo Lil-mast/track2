@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/services/aurora/AuroraDataRepository";
+import { query } from "@/lib/aurora/db";
 
 export async function GET(
   request: NextRequest,
@@ -20,9 +20,9 @@ export async function GET(
       `SELECT s.*
        FROM strategies s
        JOIN loans l ON s.loan_id = l.id
-       WHERE s.loan_id = $1 AND l.lender_id = $2
+       WHERE s.loan_id = :loanId AND l.lender_id = :lenderId
        ORDER BY s.created_at DESC`,
-      [loanId, lenderId]
+      { loanId, lenderId }
     );
 
     return NextResponse.json({

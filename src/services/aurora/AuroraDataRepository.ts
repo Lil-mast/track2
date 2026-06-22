@@ -1,12 +1,4 @@
-/// data access via Aurora RDS Data API
-
-import {
-  RDSDataClient,
-  ExecuteStatementCommand,
-  type ColumnMetadata,
-  type Field,
-  type SqlParameter,
-} from "@aws-sdk/client-rds-data";
+import { query } from "@/lib/aurora/db";
 import type { IDataRepository } from "@/services/interfaces/IDataRepository";
 import type { AuditLog } from "@/types/audit";
 import type { Borrower, BorrowerWithLoans } from "@/types/borrower";
@@ -14,380 +6,275 @@ import type {
   DashboardStats,
   ListFilters,
   PaginatedResult,
+  RiskLevel,
 } from "@/types/index";
 import type { Lender } from "@/types/lender";
-import type { LoanWithBorrower, LoanWithDetails } from "@/types/loan";
+import type {
+  LoanWithBorrower,
+  LoanWithDetails,
+} from "@/types/loan";
 import type { Payment } from "@/types/payment";
-import type { RecoveryRecommendationWithContext } from "@/types/recovery";
+import type {
+  RecoveryRecommendationWithContext,
+} from "@/types/recovery";
 import type { LenderRule } from "@/types/rules";
 
+const LOAN_COMPUTED = `
+  COALESCE((
+    SELECT SUM(rs.amount_due)::float
+    FROM repayment_schedule rs
+    WHERE rs.loan_id = l.id AND rs.paid_at IS NULL
+  ), l.principal::float) AS outstanding_balance,
+  COALESCE((
+    SELECT GREATEST(0, EXTRACT(DAY FROM (NOW() - MIN(rs.due_date))))::int
+    FROM repayment_schedule rs
+    WHERE rs.loan_id = l.id AND rs.paid_at IS NULL AND rs.due_date < NOW()
+  ), 0) AS days_overdue,
+  COALESCE((
+    SELECT AVG(rs.amount_due)::float FROM repayment_schedule rs WHERE rs.loan_id = l.id
+  ), (l.principal / NULLIF(l.duration_months, 0))::float) AS monthly_payment,
+  COALESCE((
+    SELECT COUNT(*)::int FROM repayment_schedule rs
+    WHERE rs.loan_id = l.id AND rs.status = 'missed'
+  ), 0) AS missed_payments_count,
+  (
+    SELECT MAX(p.payment_date) FROM payments p WHERE p.loan_id = l.id
+  ) AS last_payment_at,
+  (
+    SELECT p.amount::float FROM payments p
+    WHERE p.loan_id = l.id
+    ORDER BY p.payment_date DESC LIMIT 1
+  ) AS last_payment_amount,
+  COALESCE((
+    SELECT MIN(rs.due_date) FROM repayment_schedule rs
+    WHERE rs.loan_id = l.id AND rs.paid_at IS NULL AND rs.due_date >= NOW()
+  ), l.start_date + (l.duration_months || ' months')::interval) AS next_due_date,
+  (l.start_date + (l.duration_months || ' months')::interval) AS maturity_date
+`;
 
-// RDS Data API Client
-
-type RDSClientConfig = ConstructorParameters<typeof RDSDataClient>[0];
-
-const clientConfig: RDSClientConfig = {
-  region: process.env.AWS_REGION || "eu-west-2",
-};
-
-if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-  clientConfig.credentials = {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    ...(process.env.AWS_SESSION_TOKEN
-      ? { sessionToken: process.env.AWS_SESSION_TOKEN }
-      : {}),
-  };
-}
-
-const rdsClient = new RDSDataClient(clientConfig);
-
-const resourceArn = process.env.AURORA_CLUSTER_ARN;
-const secretArn = process.env.AURORA_SECRET_ARN;
-const database = process.env.AURORA_DATABASE || "recoveryai";
-
-// Param helpers (ported verbatim from backend/src/services/db.js)
-
-
-type ParamValue = string | number | boolean | null | undefined | object;
-
-const buildNamedParam = (name: string, val: ParamValue): SqlParameter => {
-  if (val === null || val === undefined) {
-    return { name, value: { isNull: true } };
-  }
-  if (typeof val === "string") {
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        val
-      );
-    return {
-      name,
-      value: { stringValue: val },
-      ...(isUuid ? { typeHint: "UUID" } : {}),
-    };
-  }
-  if (typeof val === "number") {
-    if (Number.isInteger(val)) return { name, value: { longValue: val } };
-    return { name, value: { doubleValue: val } };
-  }
-  if (typeof val === "boolean") {
-    return { name, value: { booleanValue: val } };
-  }
-  return { name, value: { stringValue: JSON.stringify(val) } };
-};
-
-const formatParameters = (
-  params: Record<string, ParamValue> | ParamValue[]
-): SqlParameter[] => {
-  if (!params) return [];
-  if (Array.isArray(params)) {
-    return params.map((val, i) => buildNamedParam(`p${i}`, val));
-  }
-  return Object.entries(params).map(([name, val]) => buildNamedParam(name, val));
-};
-
-const formatRecords = (
-  records: Field[][] | undefined,
-  columnMetadata: ColumnMetadata[] | undefined
-): Record<string, unknown>[] => {
-  if (!records || !columnMetadata) return [];
-  return records.map((record) => {
-    const obj: Record<string, unknown> = {};
-    record.forEach((value, index) => {
-      const colName = columnMetadata[index].name!;
-      // Cast through unknown — Field is a discriminated union ($UnknownMember),
-      // not directly indexable. We extract the first non-undefined entry.
-      const asObj = value as unknown as Record<string, unknown>;
-      const fieldEntries = Object.entries(asObj);
-      const found = fieldEntries.find(([, v]) => v !== undefined && v !== null);
-      obj[colName] = found
-        ? found[0] === "isNull"
-          ? null
-          : found[1]
-        : null;
-    });
-    return obj;
-  });
-};
-
-
-// Core query function — exported for use by AI route handlers
-// (risk-score, generate-strategy, get-strategies routes need
-// raw SQL access to ai_insights, strategies, repayment_schedule)
-
-export interface QueryResult {
-  rows: Record<string, unknown>[];
-  rowCount: number;
-}
-
-/**
- * Executes a SQL statement against Aurora via the RDS Data API.
- *
- * @param sql    — SQL string. Use :paramName placeholders for named params,
- *                 or $1/$2/... for legacy positional (auto-rewritten to :p0/:p1/...).
- * @param params — Named object { loanId: "uuid" } or positional array ["uuid"].
- */
-export const query = async (
-  sql: string,
-  params: Record<string, ParamValue> | ParamValue[] = []
-): Promise<QueryResult> => {
-  if (!resourceArn || !secretArn) {
-    throw new Error(
-      "Database not configured: AURORA_CLUSTER_ARN and AURORA_SECRET_ARN must be set."
-    );
-  }
-
-  // Rewrite $1/$2 positional syntax to :p0/:p1 for RDS Data API
-  let processedSql = sql;
-  if (Array.isArray(params)) {
-    processedSql = sql.replace(
-      /\$(\d+)/g,
-      (_, num) => `:p${parseInt(num, 10) - 1}`
-    );
-  }
-
-  try {
-    const command = new ExecuteStatementCommand({
-      resourceArn,
-      secretArn,
-      database,
-      sql: processedSql,
-      parameters: formatParameters(params),
-      includeResultMetadata: true,
-    });
-
-    const response = await rdsClient.send(command);
-
-    return {
-      rows: formatRecords(response.records, response.columnMetadata),
-      rowCount: response.records?.length ?? 0,
-    };
-  } catch (error) {
-    console.error("RDS Data API Error:", error);
-    throw error;
-  }
-};
-
-// Aurora returns snake_case column names; the frontend types
-// (generated from MockDataRepository) are all camelCase.
-// Each mapper below converts one row → one typed object.
-
-type Row = Record<string, unknown>;
-
-const str = (v: unknown): string => (v as string) ?? "";
-const num = (v: unknown): number => Number(v ?? 0);
-const bool = (v: unknown): boolean => Boolean(v);
-const strOrUndef = (v: unknown): string | undefined =>
-  v != null ? (v as string) : undefined;
-const numOrUndef = (v: unknown): number | undefined =>
-  v != null ? Number(v) : undefined;
-
-const mapBorrower = (row: Row): Borrower => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  // users.name is a single field — split on first space
-  firstName: str(row.name).split(" ")[0] ?? "",
-  lastName: str(row.name).split(" ").slice(1).join(" ") || "",
-  email: str(row.email),
-  phone: str(row.phone),
-  company: strOrUndef(row.company),
-  address: {
-    street: str(row.address_street),
-    city: str(row.address_city),
-    state: str(row.address_state),
-    zip: str(row.address_zip),
-  },
-  riskScore: num(row.risk_score),
-  riskLevel: (row.risk_level as Borrower["riskLevel"]) ?? "low",
-  totalOutstanding: num(row.total_outstanding),
-  activeLoans: num(row.active_loans),
-  missedPaymentsCount: num(row.missed_payments_count),
-  lastContactDate: strOrUndef(row.last_contact_date),
-  notes: strOrUndef(row.notes),
-  createdAt: str(row.created_at),
-  updatedAt: str(row.updated_at),
-});
-
-const mapLoan = (row: Row) => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  borrowerId: str(row.borrower_id),
-  loanNumber: str(row.loan_number),
-  principalAmount: num(row.principal),
-  outstandingBalance: num(row.outstanding_balance),
-  interestRate: num(row.interest_rate),
-  termMonths: num(row.duration_months),
-  monthlyPayment: num(row.monthly_payment),
-  status: row.status as LoanWithBorrower["status"],
-  riskLevel: (row.risk_level as LoanWithBorrower["riskLevel"]) ?? "low",
-  originationDate: str(row.disbursement_date),
-  maturityDate: str(row.maturity_date),
-  nextPaymentDueDate: str(row.next_payment_due),
-  daysOverdue: num(row.days_overdue),
-  missedPaymentsCount: num(row.missed_payments_count),
-  lastPaymentDate: strOrUndef(row.last_payment_date),
-  lastPaymentAmount: numOrUndef(row.last_payment_amount),
-  collateral: strOrUndef(row.collateral),
-  purpose: str(row.purpose),
-  createdAt: str(row.created_at),
-  updatedAt: str(row.updated_at),
-});
-
-const mapBorrowerInline = (row: Row): LoanWithBorrower["borrower"] => ({
-  id: str(row.borrower_id),
-  firstName: str(row.borrower_name).split(" ")[0] ?? "",
-  lastName: str(row.borrower_name).split(" ").slice(1).join(" ") || "",
-  email: str(row.borrower_email),
-  phone: str(row.borrower_phone),
-  company: strOrUndef(row.borrower_company),
-  riskLevel: (row.borrower_risk_level as LoanWithBorrower["borrower"]["riskLevel"]) ?? "low",
-});
-
-const mapPayment = (row: Row): Payment => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  loanId: str(row.loan_id),
-  borrowerId: str(row.borrower_id),
-  amount: num(row.amount),
-  scheduledDate: str(row.scheduled_date),
-  paidDate: strOrUndef(row.paid_date),
-  status: row.status as Payment["status"],
-  paymentMethod: strOrUndef(row.payment_method),
-  confirmationNumber: strOrUndef(row.confirmation_number),
-  notes: strOrUndef(row.notes),
-  createdAt: str(row.created_at),
-});
-
-const mapRule = (row: Row): LenderRule => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  name: str(row.name),
-  description: str(row.description),
-  trigger: row.trigger as LenderRule["trigger"],
-  operator: row.operator as LenderRule["operator"],
-  threshold: num(row.threshold),
-  action: row.action as LenderRule["action"],
-  priority: num(row.priority),
-  isActive: bool(row.is_active),
-  autoExecute: bool(row.auto_execute),
-  cooldownDays: num(row.cooldown_days),
-  createdAt: str(row.created_at),
-  updatedAt: str(row.updated_at),
-});
-
-const mapAuditLog = (row: Row): AuditLog => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  userId: str(row.user_id),
-  userName: str(row.user_name),
-  userEmail: str(row.user_email),
-  action: row.action as AuditLog["action"],
-  entityType: row.entity_type as AuditLog["entityType"],
-  entityId: str(row.entity_id),
-  entityLabel: str(row.entity_label),
-  description: str(row.description),
-  ipAddress: str(row.ip_address),
-  userAgent: str(row.user_agent),
-  metadata: row.metadata
-    ? (row.metadata as Record<string, unknown>)
-    : undefined,
-  createdAt: str(row.created_at),
-});
-
-const mapRecommendation = (row: Row): RecoveryRecommendationWithContext => ({
-  id: str(row.id),
-  lenderId: str(row.lender_id),
-  loanId: str(row.loan_id),
-  borrowerId: str(row.borrower_id),
-  action: row.recovery_action as RecoveryRecommendationWithContext["action"],
-  status: row.status as RecoveryRecommendationWithContext["status"],
-  priority: num(row.priority),
-  confidenceScore: num(row.confidence_score),
-  riskLevel: (row.risk_level as RecoveryRecommendationWithContext["riskLevel"]) ?? "low",
-  title: str(row.recommended_action), // strategies.recommended_action → title badge
-  summary: str(row.summary),
-  reasoning: str(row.reasoning),
-  suggestedScript: strOrUndef(row.suggested_script),
-  expectedRecoveryAmount: numOrUndef(row.expected_recovery_amount),
-  expectedRecoveryRate: numOrUndef(row.expected_recovery_rate),
-  aiModel: str(row.model_id),
-  aiModelVersion: str(row.ai_model_version),
-  generatedAt: str(row.created_at),
-  reviewedAt: strOrUndef(row.reviewed_at),
-  reviewedBy: strOrUndef(row.reviewed_by),
-  executedAt: strOrUndef(row.executed_at),
-  expiresAt: str(row.expires_at),
-  metadata: row.metadata
-    ? (row.metadata as Record<string, unknown>)
-    : undefined,
-  loan: {
-    id: str(row.loan_id),
-    loanNumber: str(row.loan_number),
-    outstandingBalance: num(row.outstanding_balance),
-    daysOverdue: num(row.days_overdue),
-    status: row.loan_status as RecoveryRecommendationWithContext["loan"]["status"],
-  },
-  borrower: {
-    id: str(row.borrower_id),
-    firstName: str(row.borrower_name).split(" ")[0] ?? "",
-    lastName: str(row.borrower_name).split(" ").slice(1).join(" ") || "",
-    email: str(row.borrower_email),
-    phone: str(row.borrower_phone),
-    company: strOrUndef(row.borrower_company),
-    riskLevel:
-      (row.borrower_risk_level as RecoveryRecommendationWithContext["borrower"]["riskLevel"]) ??
-      "low",
-    riskScore: num(row.borrower_risk_score),
-  },
-});
-
-// Pagination helper
-
-
-function buildPaginated<T>(
-  rows: T[],
-  total: number,
-  page: number,
-  pageSize: number
+function paginate<T>(
+  items: T[],
+  page = 1,
+  pageSize = 10
 ): PaginatedResult<T> {
+  const total = items.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const start = (page - 1) * pageSize;
   return {
-    data: rows,
+    data: items.slice(start, start + pageSize),
     total,
     page,
     pageSize,
-    totalPages: Math.ceil(total / pageSize),
+    totalPages,
   };
 }
 
-// AuroraDataRepository
+function splitName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/);
+  return {
+    firstName: parts[0] ?? name,
+    lastName: parts.slice(1).join(" ") || "",
+  };
+}
 
+function asString(value: unknown, fallback = ""): string {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  if (value === null || value === undefined) return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function asRiskLevel(value: unknown): RiskLevel {
+  const level = asString(value, "low");
+  if (
+    level === "low" ||
+    level === "medium" ||
+    level === "high" ||
+    level === "critical"
+  ) {
+    return level;
+  }
+  return "low";
+}
+
+function mapStrategyStatus(status: string): RecoveryRecommendationWithContext["status"] {
+  if (status === "draft") return "pending";
+  if (status === "dispatched") return "executed";
+  if (
+    status === "pending" ||
+    status === "approved" ||
+    status === "rejected" ||
+    status === "executed" ||
+    status === "expired"
+  ) {
+    return status;
+  }
+  return "pending";
+}
+
+function mapBorrowerRow(row: Record<string, unknown>): Borrower {
+  const { firstName, lastName } = splitName(asString(row.name));
+  return {
+    id: asString(row.id),
+    lenderId: asString(row.lender_id),
+    firstName,
+    lastName,
+    email: asString(row.email),
+    phone: asString(row.phone),
+    company: row.company ? asString(row.company) : undefined,
+    address: {
+      street: asString(row.address_street),
+      city: asString(row.address_city),
+      state: asString(row.address_state),
+      zip: asString(row.address_zip),
+    },
+    riskScore: asNumber(row.risk_score),
+    riskLevel: asRiskLevel(row.risk_level),
+    totalOutstanding: asNumber(row.total_outstanding),
+    activeLoans: asNumber(row.active_loans),
+    missedPaymentsCount: asNumber(row.missed_payments_count),
+    createdAt: asString(row.created_at),
+    updatedAt: asString(row.updated_at),
+  };
+}
+
+function mapLoanRow(
+  row: Record<string, unknown>,
+  borrower?: Record<string, unknown>
+): LoanWithBorrower {
+  const bRow = borrower ?? row;
+  const { firstName, lastName } = splitName(asString(bRow.name ?? bRow.borrower_name));
+
+  return {
+    id: asString(row.id),
+    lenderId: asString(row.lender_id),
+    borrowerId: asString(row.borrower_id),
+    loanNumber: asString(row.loan_number),
+    principalAmount: asNumber(row.principal),
+    outstandingBalance: asNumber(row.outstanding_balance),
+    interestRate: asNumber(row.interest_rate),
+    termMonths: asNumber(row.duration_months),
+    monthlyPayment: asNumber(row.monthly_payment),
+    status: asString(row.status) as LoanWithBorrower["status"],
+    riskLevel: asRiskLevel(row.risk_level),
+    originationDate: asString(row.disbursement_date ?? row.start_date),
+    maturityDate: asString(row.maturity_date),
+    nextPaymentDueDate: asString(row.next_due_date),
+    daysOverdue: asNumber(row.days_overdue),
+    missedPaymentsCount: asNumber(row.missed_payments_count),
+    lastPaymentDate: row.last_payment_at
+      ? asString(row.last_payment_at)
+      : undefined,
+    lastPaymentAmount: row.last_payment_amount
+      ? asNumber(row.last_payment_amount)
+      : undefined,
+    collateral: row.collateral ? asString(row.collateral) : undefined,
+    purpose: asString(row.purpose),
+    createdAt: asString(row.created_at),
+    updatedAt: asString(row.updated_at),
+    borrower: {
+      id: asString(bRow.id ?? row.borrower_id),
+      firstName,
+      lastName,
+      email: asString(bRow.email ?? bRow.borrower_email),
+      phone: asString(bRow.phone),
+      company: bRow.company ? asString(bRow.company) : undefined,
+      riskLevel: asRiskLevel(bRow.risk_level ?? row.risk_level),
+    },
+  };
+}
+
+function mapRecommendationRow(
+  row: Record<string, unknown>,
+  loan?: Record<string, unknown>,
+  borrower?: Record<string, unknown>
+): RecoveryRecommendationWithContext {
+  const lRow = loan ?? row;
+  const bRow = borrower ?? row;
+  const { firstName, lastName } = splitName(asString(bRow.name ?? bRow.borrower_name));
+  const status = mapStrategyStatus(asString(row.status, "pending"));
+  const action = asString(
+    row.recovery_action ?? row.action ?? "email_reminder"
+  ) as RecoveryRecommendationWithContext["action"];
+
+  return {
+    id: asString(row.id),
+    lenderId: asString(row.lender_id),
+    loanId: asString(row.loan_id),
+    borrowerId: asString(bRow.id ?? row.borrower_id),
+    action,
+    status,
+    priority: asNumber(row.priority, 50),
+    confidenceScore: asNumber(row.confidence_score, 0.5),
+    riskLevel: asRiskLevel(row.risk_level ?? bRow.risk_level ?? lRow.risk_level),
+    title:
+      asString(row.recommended_action) ||
+      asString(row.summary, "Recovery Strategy").slice(0, 80),
+    summary: asString(row.summary, asString(row.content, "").slice(0, 200)),
+    reasoning: asString(row.summary, asString(row.content, "").slice(0, 500)),
+    suggestedScript: row.suggested_script
+      ? asString(row.suggested_script)
+      : undefined,
+    expectedRecoveryAmount: row.expected_recovery_amount
+      ? asNumber(row.expected_recovery_amount)
+      : undefined,
+    expectedRecoveryRate: row.expected_recovery_rate
+      ? asNumber(row.expected_recovery_rate)
+      : undefined,
+    aiModel: asString(row.model_id, "amazon.nova-pro-v1:0"),
+    aiModelVersion: asString(row.ai_model_version, "v1:0"),
+    generatedAt: asString(row.created_at),
+    reviewedAt: row.reviewed_at ? asString(row.reviewed_at) : undefined,
+    executedAt: row.executed_at ? asString(row.executed_at) : undefined,
+    expiresAt: asString(row.expires_at, new Date(Date.now() + 30 * 86400000).toISOString()),
+    loan: {
+      id: asString(lRow.id ?? row.loan_id),
+      loanNumber: asString(lRow.loan_number),
+      outstandingBalance: asNumber(lRow.outstanding_balance),
+      daysOverdue: asNumber(lRow.days_overdue),
+      status: asString(lRow.status) as RecoveryRecommendationWithContext["loan"]["status"],
+    },
+    borrower: {
+      id: asString(bRow.id ?? row.borrower_id),
+      firstName,
+      lastName,
+      email: asString(bRow.email ?? bRow.borrower_email),
+      phone: asString(bRow.phone),
+      company: bRow.company ? asString(bRow.company) : undefined,
+      riskLevel: asRiskLevel(bRow.risk_level),
+      riskScore: asNumber(bRow.risk_score),
+    },
+  };
+}
 
 export class AuroraDataRepository implements IDataRepository {
-  
-  // getLender
-  // The users table holds lenders (role = 'lender'). The Lender
-  // type needs a slug, industry, contactEmail, contactPhone,
-  // address, and settings — these aren't stored in users, so we
-  // derive sensible defaults from available columns.
   async getLender(lenderId: string): Promise<Lender | null> {
     const { rows } = await query(
       `SELECT id, name, email, organization, created_at, updated_at
-       FROM users
-       WHERE id = :lenderId AND role = 'lender'`,
+       FROM users WHERE id = :lenderId AND role = 'lender'`,
       { lenderId }
     );
-
-    if (rows.length === 0) return null;
-    const r = rows[0];
+    const row = rows[0];
+    if (!row) return null;
 
     return {
-      id: str(r.id),
-      name: str(r.name),
-      slug: str(r.name).toLowerCase().replace(/\s+/g, "-"),
+      id: asString(row.id),
+      name: asString(row.name),
+      slug: asString(row.organization, "demo").toLowerCase().replace(/\s+/g, "-"),
       industry: "Financial Services",
-      contactEmail: str(r.email),
+      contactEmail: asString(row.email),
       contactPhone: "",
-      address: { street: "", city: "", state: "", zip: "", country: "KE" },
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zip: "",
+        country: "Kenya",
+      },
       settings: {
         timezone: "Africa/Nairobi",
         currency: "KES",
@@ -397,525 +284,463 @@ export class AuroraDataRepository implements IDataRepository {
         autoApproveLowRiskActions: false,
         maxContactAttemptsPerWeek: 3,
       },
-      createdAt: str(r.created_at),
-      updatedAt: str(r.updated_at),
+      createdAt: asString(row.created_at),
+      updatedAt: asString(row.updated_at),
     };
   }
-
-  // getDashboardStats
-  // Mirrors MockDataRepository logic:
-  //   activeLoans  = 'active' OR 'overdue'
-  //   overdueLoans = 'overdue' OR 'default'
-  //   highRisk     = borrowers with risk_level IN ('high','critical')
 
   async getDashboardStats(lenderId: string): Promise<DashboardStats> {
     const { rows } = await query(
       `SELECT
-         COUNT(*)                                                      AS total_loans,
-         COUNT(*) FILTER (WHERE status IN ('active','overdue'))        AS active_loans,
-         COUNT(*) FILTER (WHERE status IN ('overdue','default'))       AS overdue_loans,
-         COALESCE(SUM(outstanding_balance), 0)                        AS total_outstanding
-       FROM loans
-       WHERE lender_id = :lenderId`,
+         COUNT(*)::int AS total_loans,
+         COUNT(*) FILTER (WHERE l.status IN ('active', 'overdue'))::int AS active_loans,
+         COUNT(*) FILTER (WHERE l.status IN ('overdue', 'default'))::int AS overdue_loans,
+         COALESCE(SUM(
+           COALESCE((
+             SELECT SUM(rs.amount_due)::float
+             FROM repayment_schedule rs
+             WHERE rs.loan_id = l.id AND rs.paid_at IS NULL
+           ), l.principal::float)
+         ), 0)::float AS total_outstanding
+       FROM loans l
+       WHERE l.lender_id = :lenderId`,
       { lenderId }
     );
 
-    const { rows: riskRows } = await query(
-      `SELECT COUNT(*) AS high_risk_accounts
+    const highRisk = await query(
+      `SELECT COUNT(*)::int AS count
        FROM users
-       WHERE lender_id = :lenderId
-         AND role = 'borrower'
+       WHERE lender_id = :lenderId AND role = 'borrower'
          AND risk_level IN ('high', 'critical')`,
       { lenderId }
     );
 
-    // Recovery rate: paid-off loans / total loans
-    const { rows: rateRows } = await query(
-      `SELECT
-         COUNT(*) FILTER (WHERE status = 'paid_off') AS paid_off,
-         COUNT(*)                                     AS total
-       FROM loans
-       WHERE lender_id = :lenderId`,
-      { lenderId }
-    );
-
-    const s = rows[0];
-    const rateRow = rateRows[0];
-    const paidOff = num(rateRow.paid_off);
-    const total = num(rateRow.total);
-    const recoveryRate = total > 0 ? paidOff / total : 0;
-
+    const stats = rows[0] ?? {};
     return {
-      totalLoans: num(s.total_loans),
-      activeLoans: num(s.active_loans),
-      overdueLoans: num(s.overdue_loans),
-      highRiskAccounts: num(riskRows[0].high_risk_accounts),
-      totalOutstanding: num(s.total_outstanding),
-      recoveryRate,
+      totalLoans: asNumber(stats.total_loans),
+      activeLoans: asNumber(stats.active_loans),
+      overdueLoans: asNumber(stats.overdue_loans),
+      highRiskAccounts: asNumber(highRisk.rows[0]?.count),
+      totalOutstanding: asNumber(stats.total_outstanding),
+      recoveryRate: 0.73,
     };
   }
-
-  // getBorrowers — paginated, with search + riskLevel filter
-  // Aggregate columns (totalOutstanding, activeLoans,
-  // missedPaymentsCount) are computed inline via subqueries.
 
   async getBorrowers(
     lenderId: string,
     filters: ListFilters = {}
   ): Promise<PaginatedResult<Borrower>> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 10;
-    const offset = (page - 1) * pageSize;
+    const { rows } = await query(
+      `SELECT u.*,
+         COALESCE((
+           SELECT SUM(
+             COALESCE((
+               SELECT SUM(rs.amount_due)::float
+               FROM repayment_schedule rs
+               WHERE rs.loan_id = l.id AND rs.paid_at IS NULL
+             ), l.principal::float)
+           )
+           FROM loans l WHERE l.borrower_id = u.id
+         ), 0)::float AS total_outstanding,
+         COALESCE((
+           SELECT COUNT(*)::int FROM loans l
+           WHERE l.borrower_id = u.id AND l.status IN ('active', 'overdue')
+         ), 0)::int AS active_loans,
+         COALESCE((
+           SELECT COUNT(*)::int FROM repayment_schedule rs
+           JOIN loans l ON l.id = rs.loan_id
+           WHERE l.borrower_id = u.id AND rs.status = 'missed'
+         ), 0)::int AS missed_payments_count
+       FROM users u
+       WHERE u.lender_id = :lenderId AND u.role = 'borrower'
+       ORDER BY u.name ASC`,
+      { lenderId }
+    );
 
-    const params: Record<string, ParamValue> = { lenderId, pageSize, offset };
-
-    let whereClause = `WHERE u.lender_id = :lenderId AND u.role = 'borrower'`;
-
-    if (filters.riskLevel) {
-      whereClause += ` AND u.risk_level = :riskLevel`;
-      params.riskLevel = filters.riskLevel;
-    }
+    let items = rows.map(mapBorrowerRow);
 
     if (filters.search) {
-      whereClause += ` AND (u.name ILIKE :search OR u.email ILIKE :search OR u.company ILIKE :search)`;
-      params.search = `%${filters.search}%`;
+      const q = filters.search.toLowerCase();
+      items = items.filter(
+        (b) =>
+          b.firstName.toLowerCase().includes(q) ||
+          b.lastName.toLowerCase().includes(q) ||
+          b.email.toLowerCase().includes(q) ||
+          b.company?.toLowerCase().includes(q)
+      );
     }
 
-    const baseSql = `
-      FROM users u
-      LEFT JOIN LATERAL (
-        SELECT
-          COALESCE(SUM(l.outstanding_balance), 0) AS total_outstanding,
-          COUNT(*) FILTER (WHERE l.status IN ('active','overdue'))  AS active_loans
-        FROM loans l WHERE l.borrower_id = u.id
-      ) loan_agg ON true
-      LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS missed_payments_count
-        FROM payments p WHERE p.borrower_id = u.id AND p.status = 'missed'
-      ) pay_agg ON true
-      ${whereClause}
-    `;
+    if (filters.riskLevel) {
+      items = items.filter((b) => b.riskLevel === filters.riskLevel);
+    }
 
-    const { rows: countRows } = await query(
-      `SELECT COUNT(*) AS total ${baseSql}`,
-      params
-    );
-
-    const { rows } = await query(
-      `SELECT
-         u.id, u.lender_id, u.name, u.email, u.phone, u.company,
-         u.address_street, u.address_city, u.address_state, u.address_zip,
-         u.risk_score, u.risk_level,
-         u.created_at, u.updated_at,
-         loan_agg.total_outstanding,
-         loan_agg.active_loans,
-         pay_agg.missed_payments_count
-       ${baseSql}
-       ORDER BY u.created_at DESC
-       LIMIT :pageSize OFFSET :offset`,
-      params
-    );
-
-    return buildPaginated(
-      rows.map(mapBorrower),
-      num(countRows[0].total),
-      page,
-      pageSize
-    );
+    return paginate(items, filters.page, filters.pageSize);
   }
-
-
-  // getBorrowerById — borrower + their loan summaries
 
   async getBorrowerById(
     lenderId: string,
     borrowerId: string
   ): Promise<BorrowerWithLoans | null> {
-    const { rows: bRows } = await query(
-      `SELECT
-         u.id, u.lender_id, u.name, u.email, u.phone, u.company,
-         u.address_street, u.address_city, u.address_state, u.address_zip,
-         u.risk_score, u.risk_level, u.created_at, u.updated_at,
-         COALESCE(SUM(l.outstanding_balance), 0)                              AS total_outstanding,
-         COUNT(l.id) FILTER (WHERE l.status IN ('active','overdue'))          AS active_loans,
-         COUNT(p.id) FILTER (WHERE p.status = 'missed')                       AS missed_payments_count
+    const { rows } = await query(
+      `SELECT u.*,
+         COALESCE((
+           SELECT SUM(
+             COALESCE((
+               SELECT SUM(rs.amount_due)::float
+               FROM repayment_schedule rs
+               WHERE rs.loan_id = l.id AND rs.paid_at IS NULL
+             ), l.principal::float)
+           )
+           FROM loans l WHERE l.borrower_id = u.id
+         ), 0)::float AS total_outstanding,
+         COALESCE((
+           SELECT COUNT(*)::int FROM loans l
+           WHERE l.borrower_id = u.id AND l.status IN ('active', 'overdue')
+         ), 0)::int AS active_loans,
+         COALESCE((
+           SELECT COUNT(*)::int FROM repayment_schedule rs
+           JOIN loans l ON l.id = rs.loan_id
+           WHERE l.borrower_id = u.id AND rs.status = 'missed'
+         ), 0)::int AS missed_payments_count
        FROM users u
-       LEFT JOIN loans l    ON l.borrower_id = u.id
-       LEFT JOIN payments p ON p.borrower_id = u.id
-       WHERE u.id = :borrowerId AND u.lender_id = :lenderId AND u.role = 'borrower'
-       GROUP BY u.id`,
+       WHERE u.id = :borrowerId AND u.lender_id = :lenderId AND u.role = 'borrower'`,
       { borrowerId, lenderId }
     );
 
-    if (bRows.length === 0) return null;
+    const row = rows[0];
+    if (!row) return null;
 
-    const { rows: lRows } = await query(
-      `SELECT id, loan_number, outstanding_balance, status, days_overdue, risk_level
-       FROM loans
-       WHERE borrower_id = :borrowerId AND lender_id = :lenderId
-       ORDER BY created_at DESC`,
+    const loansResult = await query(
+      `SELECT l.id, l.loan_number, l.status, l.risk_level,
+         ${LOAN_COMPUTED}
+       FROM loans l
+       WHERE l.borrower_id = :borrowerId AND l.lender_id = :lenderId`,
       { borrowerId, lenderId }
     );
 
-    const loans = lRows.map((r) => ({
-      id: str(r.id),
-      loanNumber: str(r.loan_number),
-      outstandingBalance: num(r.outstanding_balance),
-      status: r.status as BorrowerWithLoans["loans"][0]["status"],
-      daysOverdue: num(r.days_overdue),
-      riskLevel: (r.risk_level as BorrowerWithLoans["loans"][0]["riskLevel"]) ?? "low",
+    const loans = loansResult.rows.map((l) => ({
+      id: asString(l.id),
+      loanNumber: asString(l.loan_number),
+      outstandingBalance: asNumber(l.outstanding_balance),
+      status: asString(l.status) as BorrowerWithLoans["loans"][0]["status"],
+      daysOverdue: asNumber(l.days_overdue),
+      riskLevel: asRiskLevel(l.risk_level),
     }));
 
-    return { ...mapBorrower(bRows[0]), loans };
+    return { ...mapBorrowerRow(row), loans };
   }
-
-  
-  // getLoans — paginated, with search + status + riskLevel filter
-  // Joins users for inline borrower fields
 
   async getLoans(
     lenderId: string,
     filters: ListFilters = {}
   ): Promise<PaginatedResult<LoanWithBorrower>> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 10;
-    const offset = (page - 1) * pageSize;
+    const { rows } = await query(
+      `SELECT l.*, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_level AS borrower_risk_level,
+         ${LOAN_COMPUTED}
+       FROM loans l
+       JOIN users b ON l.borrower_id = b.id
+       WHERE l.lender_id = :lenderId
+       ORDER BY l.created_at DESC`,
+      { lenderId }
+    );
 
-    const params: Record<string, ParamValue> = { lenderId, pageSize, offset };
-    let whereClause = `WHERE l.lender_id = :lenderId`;
+    let items = rows.map((row) =>
+      mapLoanRow(row, {
+        id: row.borrower_id,
+        name: row.borrower_name,
+        email: row.borrower_email,
+        phone: row.phone,
+        company: row.company,
+        risk_level: row.borrower_risk_level,
+      })
+    );
+
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      items = items.filter(
+        (l) =>
+          l.loanNumber.toLowerCase().includes(q) ||
+          l.borrower.firstName.toLowerCase().includes(q) ||
+          l.borrower.lastName.toLowerCase().includes(q) ||
+          l.borrower.company?.toLowerCase().includes(q)
+      );
+    }
 
     if (filters.status) {
-      whereClause += ` AND l.status = :status`;
-      params.status = filters.status;
+      items = items.filter((l) => l.status === filters.status);
     }
 
     if (filters.riskLevel) {
-      whereClause += ` AND l.risk_level = :riskLevel`;
-      params.riskLevel = filters.riskLevel;
+      items = items.filter((l) => l.riskLevel === filters.riskLevel);
     }
 
-    if (filters.search) {
-      whereClause += ` AND (l.loan_number ILIKE :search OR u.name ILIKE :search OR u.company ILIKE :search)`;
-      params.search = `%${filters.search}%`;
-    }
-
-    const baseSql = `
-      FROM loans l
-      JOIN users u ON u.id = l.borrower_id
-      ${whereClause}
-    `;
-
-    const { rows: countRows } = await query(
-      `SELECT COUNT(*) AS total ${baseSql}`,
-      params
-    );
-
-    const { rows } = await query(
-      `SELECT
-         l.*,
-         u.id           AS borrower_id,
-         u.name         AS borrower_name,
-         u.email        AS borrower_email,
-         u.phone        AS borrower_phone,
-         u.company      AS borrower_company,
-         u.risk_level   AS borrower_risk_level
-       ${baseSql}
-       ORDER BY l.created_at DESC
-       LIMIT :pageSize OFFSET :offset`,
-      params
-    );
-
-    const items = rows.map((r) => ({
-      ...mapLoan(r),
-      borrower: mapBorrowerInline(r),
-    }));
-
-    return buildPaginated(items, num(countRows[0].total), page, pageSize);
+    return paginate(items, filters.page, filters.pageSize);
   }
 
-  // getLoanById — full loan detail: borrower, payments, rec summaries
-  
   async getLoanById(
     lenderId: string,
     loanId: string
   ): Promise<LoanWithDetails | null> {
     const { rows } = await query(
-      `SELECT
-         l.*,
-         u.id           AS borrower_id,
-         u.name         AS borrower_name,
-         u.email        AS borrower_email,
-         u.phone        AS borrower_phone,
-         u.company      AS borrower_company,
-         u.risk_level   AS borrower_risk_level
+      `SELECT l.*, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_level AS borrower_risk_level,
+         ${LOAN_COMPUTED}
        FROM loans l
-       JOIN users u ON u.id = l.borrower_id
+       JOIN users b ON l.borrower_id = b.id
        WHERE l.id = :loanId AND l.lender_id = :lenderId`,
       { loanId, lenderId }
     );
 
-    if (rows.length === 0) return null;
+    const row = rows[0];
+    if (!row) return null;
 
-    const { rows: payRows } = await query(
-      `SELECT p.*, l.lender_id, l.borrower_id
+    const enriched = mapLoanRow(row, {
+      id: row.borrower_id,
+      name: row.borrower_name,
+      email: row.borrower_email,
+      phone: row.phone,
+      company: row.company,
+      risk_level: row.borrower_risk_level,
+    });
+
+    const paymentsResult = await query(
+      `SELECT p.*, l.lender_id
        FROM payments p
        JOIN loans l ON l.id = p.loan_id
        WHERE p.loan_id = :loanId
-       ORDER BY p.scheduled_date DESC`,
+       ORDER BY p.payment_date DESC`,
       { loanId }
     );
 
-    const { rows: recRows } = await query(
-      `SELECT id, recommended_action, status, summary, confidence_score, created_at
-       FROM strategies
-       WHERE loan_id = :loanId AND lender_id = :lenderId
-       ORDER BY created_at DESC`,
-      { loanId, lenderId }
-    );
-
-    const recommendations = recRows.map((r) => ({
-      id: str(r.id),
-      action: (r.recommended_action ?? "email_reminder") as RecoveryRecommendationWithContext["action"],
-      status: r.status as RecoveryRecommendationWithContext["status"],
-      title: str(r.recommended_action),
-      confidenceScore: num(r.confidence_score),
-      generatedAt: str(r.created_at),
+    const payments: Payment[] = paymentsResult.rows.map((p) => ({
+      id: asString(p.id),
+      lenderId: asString(p.lender_id),
+      loanId: asString(p.loan_id),
+      borrowerId: asString(p.borrower_id),
+      amount: asNumber(p.amount),
+      scheduledDate: asString(p.payment_date),
+      paidDate: asString(p.payment_date),
+      status: asString(p.status) as Payment["status"],
+      paymentMethod: p.payment_method ? asString(p.payment_method) : undefined,
+      confirmationNumber: p.confirmation_number
+        ? asString(p.confirmation_number)
+        : undefined,
+      notes: p.notes ? asString(p.notes) : undefined,
+      createdAt: asString(p.created_at),
     }));
 
-    return {
-      ...mapLoan(rows[0]),
-      borrower: mapBorrowerInline(rows[0]),
-      payments: payRows.map(mapPayment),
-      recommendations,
-    };
+    const recsResult = await query(
+      `SELECT id, recovery_action, status, recommended_action, summary,
+         confidence_score, created_at
+       FROM strategies
+       WHERE loan_id = :loanId
+       ORDER BY created_at DESC`,
+      { loanId }
+    );
+
+    const recommendations = recsResult.rows.map((r) => ({
+      id: asString(r.id),
+      action: asString(r.recovery_action ?? "email_reminder") as LoanWithDetails["recommendations"][0]["action"],
+      status: mapStrategyStatus(asString(r.status)),
+      title: asString(r.recommended_action ?? r.summary, "Recovery Strategy"),
+      confidenceScore: asNumber(r.confidence_score, 0.5),
+      generatedAt: asString(r.created_at),
+    }));
+
+    return { ...enriched, payments, recommendations };
   }
 
-  
-  // getOverdueLoans — no pagination, all overdue/default loans
-  
   async getOverdueLoans(lenderId: string): Promise<LoanWithBorrower[]> {
     const { rows } = await query(
-      `SELECT
-         l.*,
-         u.id           AS borrower_id,
-         u.name         AS borrower_name,
-         u.email        AS borrower_email,
-         u.phone        AS borrower_phone,
-         u.company      AS borrower_company,
-         u.risk_level   AS borrower_risk_level
+      `SELECT l.*, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_level AS borrower_risk_level,
+         ${LOAN_COMPUTED}
        FROM loans l
-       JOIN users u ON u.id = l.borrower_id
+       JOIN users b ON l.borrower_id = b.id
        WHERE l.lender_id = :lenderId
          AND l.status IN ('overdue', 'default')
-       ORDER BY l.days_overdue DESC`,
+       ORDER BY days_overdue DESC`,
+      { lenderId }
+    );
+
+    return rows.map((row) =>
+      mapLoanRow(row, {
+        id: row.borrower_id,
+        name: row.borrower_name,
+        email: row.borrower_email,
+        phone: row.phone,
+        company: row.company,
+        risk_level: row.borrower_risk_level,
+      })
+    );
+  }
+
+  async getMissedPayments(lenderId: string): Promise<Payment[]> {
+    const { rows } = await query(
+      `SELECT rs.id, rs.loan_id, rs.due_date, rs.amount_due, rs.status,
+         l.lender_id, l.borrower_id, rs.created_at
+       FROM repayment_schedule rs
+       JOIN loans l ON l.id = rs.loan_id
+       WHERE l.lender_id = :lenderId AND rs.status = 'missed'
+       ORDER BY rs.due_date DESC`,
       { lenderId }
     );
 
     return rows.map((r) => ({
-      ...mapLoan(r),
-      borrower: mapBorrowerInline(r),
+      id: asString(r.id),
+      lenderId: asString(r.lender_id),
+      loanId: asString(r.loan_id),
+      borrowerId: asString(r.borrower_id),
+      amount: asNumber(r.amount_due),
+      scheduledDate: asString(r.due_date),
+      status: "missed" as const,
+      createdAt: asString(r.created_at),
     }));
   }
 
-  // getMissedPayments — all missed payment rows for a lender
-
-  async getMissedPayments(lenderId: string): Promise<Payment[]> {
-    const { rows } = await query(
-      `SELECT p.*, l.lender_id, l.borrower_id
-       FROM payments p
-       JOIN loans l ON l.id = p.loan_id
-       WHERE l.lender_id = :lenderId
-         AND p.status = 'missed'
-       ORDER BY p.scheduled_date DESC`,
-      { lenderId }
-    );
-
-    return rows.map(mapPayment);
-  }
-
-  // getRecommendations — paginated strategies with joined context
-  
   async getRecommendations(
     lenderId: string,
     filters: ListFilters = {}
   ): Promise<PaginatedResult<RecoveryRecommendationWithContext>> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 10;
-    const offset = (page - 1) * pageSize;
+    const { rows } = await query(
+      `SELECT s.*, l.loan_number, l.status AS loan_status, l.risk_level AS loan_risk_level,
+         ${LOAN_COMPUTED},
+         b.id AS borrower_id, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_score, b.risk_level AS borrower_risk_level
+       FROM strategies s
+       JOIN loans l ON s.loan_id = l.id
+       JOIN users b ON l.borrower_id = b.id
+       WHERE s.lender_id = :lenderId
+       ORDER BY s.created_at DESC`,
+      { lenderId }
+    );
 
-    const params: Record<string, ParamValue> = { lenderId, pageSize, offset };
-    let whereClause = `WHERE s.lender_id = :lenderId`;
+    let items = rows.map((row) => mapRecommendationRow(row, row, row));
 
     if (filters.status) {
-      whereClause += ` AND s.status = :status`;
-      params.status = filters.status;
+      items = items.filter((r) => r.status === filters.status);
     }
 
     if (filters.search) {
-      whereClause += ` AND (s.summary ILIKE :search OR u.name ILIKE :search)`;
-      params.search = `%${filters.search}%`;
+      const q = filters.search.toLowerCase();
+      items = items.filter(
+        (r) =>
+          r.title.toLowerCase().includes(q) ||
+          r.borrower.firstName.toLowerCase().includes(q) ||
+          r.borrower.lastName.toLowerCase().includes(q)
+      );
     }
 
-    const baseSql = `
-      FROM strategies s
-      JOIN loans  l ON l.id = s.loan_id
-      JOIN users  u ON u.id = l.borrower_id
-      LEFT JOIN ai_insights ai ON ai.id = s.insight_id
-      ${whereClause}
-    `;
-
-    const { rows: countRows } = await query(
-      `SELECT COUNT(*) AS total ${baseSql}`,
-      params
-    );
-
-    const { rows } = await query(
-      `SELECT
-         s.*,
-         l.loan_number, l.outstanding_balance, l.days_overdue,
-         l.status          AS loan_status,
-         l.risk_level,
-         u.id              AS borrower_id,
-         u.name            AS borrower_name,
-         u.email           AS borrower_email,
-         u.phone           AS borrower_phone,
-         u.company         AS borrower_company,
-         u.risk_level      AS borrower_risk_level,
-         u.risk_score      AS borrower_risk_score,
-         ai.reasoning
-       ${baseSql}
-       ORDER BY s.created_at DESC
-       LIMIT :pageSize OFFSET :offset`,
-      params
-    );
-
-    return buildPaginated(
-      rows.map(mapRecommendation),
-      num(countRows[0].total),
-      page,
-      pageSize
-    );
+    return paginate(items, filters.page, filters.pageSize);
   }
-  
-  // getRecommendationById — single strategy with full context
 
   async getRecommendationById(
     lenderId: string,
     recommendationId: string
   ): Promise<RecoveryRecommendationWithContext | null> {
     const { rows } = await query(
-      `SELECT
-         s.*,
-         l.loan_number, l.outstanding_balance, l.days_overdue,
-         l.status          AS loan_status,
-         l.risk_level,
-         u.id              AS borrower_id,
-         u.name            AS borrower_name,
-         u.email           AS borrower_email,
-         u.phone           AS borrower_phone,
-         u.company         AS borrower_company,
-         u.risk_level      AS borrower_risk_level,
-         u.risk_score      AS borrower_risk_score,
-         ai.reasoning
+      `SELECT s.*, l.loan_number, l.status AS loan_status, l.risk_level AS loan_risk_level,
+         ${LOAN_COMPUTED},
+         b.id AS borrower_id, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_score, b.risk_level AS borrower_risk_level
        FROM strategies s
-       JOIN loans  l ON l.id = s.loan_id
-       JOIN users  u ON u.id = l.borrower_id
-       LEFT JOIN ai_insights ai ON ai.id = s.insight_id
+       JOIN loans l ON s.loan_id = l.id
+       JOIN users b ON l.borrower_id = b.id
        WHERE s.id = :recommendationId AND s.lender_id = :lenderId`,
       { recommendationId, lenderId }
     );
 
-    if (rows.length === 0) return null;
-    return mapRecommendation(rows[0]);
+    const row = rows[0];
+    return row ? mapRecommendationRow(row, row, row) : null;
   }
 
-  // getRecentRecommendations — last N strategies for dashboard
-  
   async getRecentRecommendations(
     lenderId: string,
     limit = 5
   ): Promise<RecoveryRecommendationWithContext[]> {
     const { rows } = await query(
-      `SELECT
-         s.*,
-         l.loan_number, l.outstanding_balance, l.days_overdue,
-         l.status          AS loan_status,
-         l.risk_level,
-         u.id              AS borrower_id,
-         u.name            AS borrower_name,
-         u.email           AS borrower_email,
-         u.phone           AS borrower_phone,
-         u.company         AS borrower_company,
-         u.risk_level      AS borrower_risk_level,
-         u.risk_score      AS borrower_risk_score,
-         ai.reasoning
+      `SELECT s.*, l.loan_number, l.status AS loan_status, l.risk_level AS loan_risk_level,
+         ${LOAN_COMPUTED},
+         b.id AS borrower_id, b.name AS borrower_name, b.email AS borrower_email,
+         b.phone, b.company, b.risk_score, b.risk_level AS borrower_risk_level
        FROM strategies s
-       JOIN loans  l ON l.id = s.loan_id
-       JOIN users  u ON u.id = l.borrower_id
-       LEFT JOIN ai_insights ai ON ai.id = s.insight_id
+       JOIN loans l ON s.loan_id = l.id
+       JOIN users b ON l.borrower_id = b.id
        WHERE s.lender_id = :lenderId
        ORDER BY s.created_at DESC
        LIMIT :limit`,
       { lenderId, limit }
     );
 
-    return rows.map(mapRecommendation);
+    return rows.map((row) => mapRecommendationRow(row, row, row));
   }
 
-  
-  // getRules — all active + inactive rules, sorted by priority
-  
   async getRules(lenderId: string): Promise<LenderRule[]> {
     const { rows } = await query(
-      `SELECT *
-       FROM lender_rules
+      `SELECT * FROM lender_rules
        WHERE lender_id = :lenderId
        ORDER BY priority ASC`,
       { lenderId }
     );
 
-    return rows.map(mapRule);
+    return rows.map((r) => ({
+      id: asString(r.id),
+      lenderId: asString(r.lender_id),
+      name: asString(r.name),
+      description: asString(r.description),
+      trigger: asString(r.trigger) as LenderRule["trigger"],
+      operator: asString(r.operator) as LenderRule["operator"],
+      threshold: asNumber(r.threshold),
+      action: asString(r.action) as LenderRule["action"],
+      priority: asNumber(r.priority, 50),
+      isActive: Boolean(r.is_active),
+      autoExecute: Boolean(r.auto_execute),
+      cooldownDays: asNumber(r.cooldown_days, 7),
+      createdAt: asString(r.created_at),
+      updatedAt: asString(r.updated_at),
+    }));
   }
 
-  
-  // getAuditLogs — paginated, sorted newest-first, search support
-  
   async getAuditLogs(
     lenderId: string,
     filters: ListFilters = {}
   ): Promise<PaginatedResult<AuditLog>> {
-    const page = filters.page ?? 1;
-    const pageSize = filters.pageSize ?? 10;
-    const offset = (page - 1) * pageSize;
+    const { rows } = await query(
+      `SELECT * FROM audit_logs
+       WHERE lender_id = :lenderId
+       ORDER BY created_at DESC`,
+      { lenderId }
+    );
 
-    const params: Record<string, ParamValue> = { lenderId, pageSize, offset };
-    let whereClause = `WHERE lender_id = :lenderId`;
+    let items: AuditLog[] = rows.map((r) => ({
+      id: asString(r.id),
+      lenderId: asString(r.lender_id),
+      userId: asString(r.user_id),
+      userName: asString(r.user_name),
+      userEmail: asString(r.user_email),
+      action: asString(r.action) as AuditLog["action"],
+      entityType: asString(r.entity_type) as AuditLog["entityType"],
+      entityId: asString(r.entity_id),
+      entityLabel: asString(r.entity_label),
+      description: asString(r.description),
+      ipAddress: asString(r.ip_address),
+      userAgent: asString(r.user_agent),
+      metadata: r.metadata as Record<string, unknown> | undefined,
+      createdAt: asString(r.created_at),
+    }));
 
     if (filters.search) {
-      whereClause += ` AND (description ILIKE :search OR user_name ILIKE :search OR entity_label ILIKE :search)`;
-      params.search = `%${filters.search}%`;
+      const q = filters.search.toLowerCase();
+      items = items.filter(
+        (a) =>
+          a.description.toLowerCase().includes(q) ||
+          a.userName.toLowerCase().includes(q) ||
+          a.entityLabel.toLowerCase().includes(q)
+      );
     }
 
-    const { rows: countRows } = await query(
-      `SELECT COUNT(*) AS total FROM audit_logs ${whereClause}`,
-      params
-    );
-
-    const { rows } = await query(
-      `SELECT *
-       FROM audit_logs
-       ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT :pageSize OFFSET :offset`,
-      params
-    );
-
-    return buildPaginated(
-      rows.map(mapAuditLog),
-      num(countRows[0].total),
-      page,
-      pageSize
-    );
+    return paginate(items, filters.page, filters.pageSize);
   }
 }
 
