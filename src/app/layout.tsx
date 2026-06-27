@@ -1,7 +1,3 @@
-/**
- * Root layout — real, required by Next.js to render any page.
- * MIGRATE FROM: frontend/src/app/layout.tsx (move as-is, no changes needed)
- */
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";

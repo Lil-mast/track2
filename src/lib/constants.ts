@@ -3,10 +3,18 @@
  * MIGRATE FROM: frontend/src/lib/constants.ts (move as-is, no changes needed)
  */
 export const APP_NAME = "RecoveryAI";
+
 export const APP_DESCRIPTION =
   "AI-powered loan recovery platform for B2B lenders";
 
-export const DEFAULT_LENDER_ID = "lender_001";
+/** Demo lender UUID in Aurora seed data */
+export const DEMO_LENDER_ID = "b0000001-0000-0000-0000-000000000001";
+
+/** Default lender ID — mock locally, demo UUID when Aurora is enabled */
+export const DEFAULT_LENDER_ID =
+  process.env.AURORA_ENABLED === "true"
+    ? (process.env.DEMO_LENDER_ID ?? DEMO_LENDER_ID)
+    : "lender_001";
 
 export const LOAN_STATUSES = [
   "active",
