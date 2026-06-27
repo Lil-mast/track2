@@ -1,0 +1,54 @@
+ ⨯ ./src/app/(dashboard)/page.tsx
+Error:   [31mx[0m Expected '</', got 'r'
+     ,-[[36;1;4mC:\Users\admin\Desktop\track2\src\app\(dashboard)\page.tsx[0m:425:1]
+ [2m422[0m |       <style
+ [2m423[0m |         dangerouslySetInnerHTML={{
+ [2m424[0m |           __html: `
+ [2m425[0m |             @keyframes floatIn {`r`n              from { opacity: 0; transform: translateY(14px) scale(0.98); }`r`n              to { opacity: 1; transform: translateY(0) scale(1); }`r`n            }`r`n            @keyframes glassDrift {`r`n              0%, 100% { transform: translateY(0); }`r`n              50% { transform: translateY(-10px); }`r`n            }`r`n            @keyframes glassShine {`r`n              from { transform: translateX(-120%) rotate(12deg); }`r`n              to { transform: translateX(180%) rotate(12deg); }`r`n            }
+     : [35;1m                                 ^[0m
+ [2m426[0m |             @media (prefers-reduced-motion: no-preference) {
+ [2m427[0m |               header { animation: floatIn 520ms ease both; }
+ [2m427[0m |               .glass-drift { animation: glassDrift 8s ease-in-out infinite; }
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/(dashboard)/page.tsx
+ ⨯ ./src/app/(dashboard)/page.tsx
+Error:   [31mx[0m Expected '</', got 'r'
+     ,-[[36;1;4mC:\Users\admin\Desktop\track2\src\app\(dashboard)\page.tsx[0m:425:1]
+ [2m422[0m |       <style
+ [2m423[0m |         dangerouslySetInnerHTML={{
+ [2m424[0m |           __html: `
+ [2m425[0m |             @keyframes floatIn {`r`n              from { opacity: 0; transform: translateY(14px) scale(0.98); }`r`n              to { opacity: 1; transform: translateY(0) scale(1); }`r`n            }`r`n            @keyframes glassDrift {`r`n              0%, 100% { transform: translateY(0); }`r`n              50% { transform: translateY(-10px); }`r`n            }`r`n            @keyframes glassShine {`r`n              from { transform: translateX(-120%) rotate(12deg); }`r`n              to { transform: translateX(180%) rotate(12deg); }`r`n            }
+     : [35;1m                                 ^[0m
+ [2m426[0m |             @media (prefers-reduced-motion: no-preference) {
+ [2m427[0m |               header { animation: floatIn 520ms ease both; }
+ [2m427[0m |               .glass-drift { animation: glassDrift 8s ease-in-out infinite; }
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/(dashboard)/page.tsx
+ ⨯ ./src/app/(dashboard)/page.tsx
+Error:   [31mx[0m Expected '</', got 'r'
+     ,-[[36;1;4mC:\Users\admin\Desktop\track2\src\app\(dashboard)\page.tsx[0m:425:1]
+ [2m422[0m |       <style
+ [2m423[0m |         dangerouslySetInnerHTML={{
+ [2m424[0m |           __html: `
+ [2m425[0m |             @keyframes floatIn {`r`n              from { opacity: 0; transform: translateY(14px) scale(0.98); }`r`n              to { opacity: 1; transform: translateY(0) scale(1); }`r`n            }`r`n            @keyframes glassDrift {`r`n              0%, 100% { transform: translateY(0); }`r`n              50% { transform: translateY(-10px); }`r`n            }`r`n            @keyframes glassShine {`r`n              from { transform: translateX(-120%) rotate(12deg); }`r`n              to { transform: translateX(180%) rotate(12deg); }`r`n            }
+     : [35;1m                                 ^[0m
+ [2m426[0m |             @media (prefers-reduced-motion: no-preference) {
+ [2m427[0m |               header { animation: floatIn 520ms ease both; }
+ [2m427[0m |               .glass-drift { animation: glassDrift 8s ease-in-out infinite; }
+     `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/(dashboard)/page.tsx

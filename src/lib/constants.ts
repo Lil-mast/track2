@@ -1,8 +1,8 @@
 /**
- * App constants — real, required by root layout.
+ * App constants - real, required by root layout.
  * MIGRATE FROM: frontend/src/lib/constants.ts (move as-is, no changes needed)
  */
-export const APP_NAME = "RecoverIQ";
+export const APP_NAME = "RecoveryAI";
 export const APP_DESCRIPTION =
   "AI-powered loan recovery platform for B2B lenders";
 
