@@ -64,9 +64,9 @@ track2/
 
 ### Installation
 1. Clone the repository
-2. Install dependencies: `npm install`
+2. Install dependencies: `pnpm install`
 3. Setup environment variables: `cp .env.example .env.local`
-4. Run development server: `npm run dev`
+4. Run development server: `pnpm run dev`
 
 ---
 

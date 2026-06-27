@@ -4,27 +4,27 @@ This repo uses **Next.js (App Router)** with **TypeScript** and **Tailwind CSS**
 
 ## Prerequisites
 - Node.js 18+ recommended
-- Package manager: npm
+- Package manager: pnpm
 
 ## Install
 ```bash
-npm install
+pnpm install
 ```
 
 ## Run (dev)
 ```bash
-npm run dev
+pnpm run dev
 ```
 Then open:
 - http://localhost:3000
 
 ## Build (production)
 ```bash
-npm run build
-npm run start
+pnpm run build
+pnpm run start
 ```
 
 ## Lint / Typecheck
 ```bash
-npm run lint
-npx tsc --noEmit
+pnpm run lint
+pnpm exec tsc --noEmit

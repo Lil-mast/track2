@@ -231,8 +231,8 @@ After moving, delete the now-empty `frontend/` directory.
 
 Verify it builds:
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ---
@@ -242,7 +242,7 @@ npm run build
 `@aws-sdk/client-rds-data` is already in `package.json` (added on the migration branch). Add the remaining packages needed for Bedrock and Zod validation:
 
 ```bash
-npm install @aws-sdk/client-bedrock-runtime zod
+pnpm install @aws-sdk/client-bedrock-runtime zod
 ```
 
 ---
@@ -378,13 +378,13 @@ rm -rf backend/
 ### Step 9 — Verify the build
 
 ```bash
-npm run build
+pnpm run build
 ```
 
 Should produce zero errors. Then:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Hit the following to confirm the routes are registered:

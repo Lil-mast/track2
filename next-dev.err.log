@@ -52,3 +52,4 @@ Caused by:
 
 Import trace for requested module:
 ./src/app/(dashboard)/page.tsx
+ ⨯ Module not found: Error: Can't resolve 'next-flight-client-entry-loader' in 'C:\Users\admin\Desktop\track2'
