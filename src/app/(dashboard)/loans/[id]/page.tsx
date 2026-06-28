@@ -9,6 +9,7 @@ import { getDataRepository } from "@/services";
 import { DEFAULT_LENDER_ID } from "@/lib/constants";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { recoveryActionLabels } from "@/lib/labels";
+import { LoanStrategies } from "@/components/recovery/loan-strategies";
 
 interface LoanDetailPageProps {
   params: Promise<{ id: string }>;
@@ -153,6 +154,8 @@ export default async function LoanDetailPage({ params }: LoanDetailPageProps) {
           </CardContent>
         </Card>
       </div>
+
+      <LoanStrategies loanId={loan.id} lenderId={DEFAULT_LENDER_ID} />
 
       <Card>
         <CardHeader>
