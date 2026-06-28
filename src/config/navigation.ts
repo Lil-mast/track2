@@ -10,7 +10,7 @@ import {
 export const navigationItems = [
   {
     title: "Dashboard",
-    href: "/",
+    href: "/dashboard",
     icon: LayoutDashboard,
   },
   {
