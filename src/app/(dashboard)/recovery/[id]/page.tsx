@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { RecoveryWorkflowPanel } from "@/components/recovery/recovery-workflow-panel";
 import { StrategyActions } from "@/components/recovery/strategy-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,12 +49,6 @@ export default async function RecoveryDetailPage({
         strategyId={rec.id}
         lenderId={rec.lenderId}
         initialStatus={rec.status}
-      />
-
-      <RecoveryWorkflowPanel
-        loanId={rec.loanId}
-        lenderId={rec.lenderId}
-        loanNumber={rec.loan.loanNumber}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">

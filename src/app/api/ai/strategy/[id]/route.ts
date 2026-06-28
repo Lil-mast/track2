@@ -30,6 +30,12 @@ const STATUS_SQL: Record<string, string> = {
             approved_at = COALESCE(approved_at, NOW()), reviewed_at = NOW()`,
 };
 
+const AUDIT_VERB: Record<string, string> = {
+  approve: "Approved",
+  reject: "Rejected",
+  execute: "Executed",
+};
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -53,7 +59,8 @@ export async function PATCH(
       `UPDATE strategies
        SET ${STATUS_SQL[action]}
        WHERE id = :id AND lender_id = :lenderId
-       RETURNING id, status, approved_at, executed_at, reviewed_at, updated_at`,
+       RETURNING id, status, recommended_action, approved_at, executed_at,
+                 reviewed_at, updated_at`,
       { id, lenderId }
     );
 
@@ -64,7 +71,49 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json({ success: true, strategy: result.rows[0] });
+    const updated = result.rows[0];
+
+    // Best-effort audit trail — never fail the action if logging fails.
+    try {
+      const lender = await query(
+        `SELECT name, email FROM users WHERE id = :lenderId`,
+        { lenderId }
+      );
+      const userName = (lender.rows[0]?.name as string) ?? "System";
+      const userEmail =
+        (lender.rows[0]?.email as string) ?? "system@recoveriq.ai";
+      const label =
+        (updated.recommended_action as string) ?? "Recovery Strategy";
+      const ip =
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+      const ua = request.headers.get("user-agent") ?? null;
+
+      await query(
+        `INSERT INTO audit_logs
+           (lender_id, user_id, user_name, user_email, action, entity_type,
+            entity_id, entity_label, description, ip_address, user_agent)
+         VALUES
+           (:lenderId, :lenderId, :userName, :userEmail,
+            CAST(:auditAction AS audit_action),
+            CAST('recommendation' AS audit_entity_type),
+            CAST(:entityId AS text), :label, :description, :ip, :ua)`,
+        {
+          lenderId,
+          userName,
+          userEmail,
+          auditAction: action,
+          entityId: id,
+          label,
+          description: `${AUDIT_VERB[action]} AI recovery strategy "${label}"`,
+          ip,
+          ua,
+        }
+      );
+    } catch (auditErr) {
+      console.error("Audit log write failed (non-fatal):", auditErr);
+    }
+
+    return NextResponse.json({ success: true, strategy: updated });
   } catch (error) {
     console.error("Strategy Action Handler Error:", error);
     if (error instanceof z.ZodError) {

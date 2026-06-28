@@ -155,7 +155,11 @@ export default async function LoanDetailPage({ params }: LoanDetailPageProps) {
         </Card>
       </div>
 
-      <LoanStrategies loanId={loan.id} lenderId={DEFAULT_LENDER_ID} />
+      <LoanStrategies
+        loanId={loan.id}
+        lenderId={DEFAULT_LENDER_ID}
+        borrowerId={loan.borrowerId}
+      />
 
       <Card>
         <CardHeader>
