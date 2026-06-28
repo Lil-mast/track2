@@ -2,15 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   ArrowLeft,
-  CheckCircle,
-  XCircle,
-  Play,
   Sparkles,
   Bot,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { RecoveryWorkflowPanel } from "@/components/recovery/recovery-workflow-panel";
+import { StrategyActions } from "@/components/recovery/strategy-actions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -48,22 +46,11 @@ export default async function RecoveryDetailPage({
         </div>
       </PageHeader>
 
-      {rec.status === "pending" && (
-        <div className="flex flex-wrap gap-2">
-          <Button>
-            <CheckCircle className="h-4 w-4 mr-1" />
-            Approve
-          </Button>
-          <Button variant="outline">
-            <Play className="h-4 w-4 mr-1" />
-            Approve & Execute
-          </Button>
-          <Button variant="outline">
-            <XCircle className="h-4 w-4 mr-1" />
-            Reject
-          </Button>
-        </div>
-      )}
+      <StrategyActions
+        strategyId={rec.id}
+        lenderId={rec.lenderId}
+        initialStatus={rec.status}
+      />
 
       <RecoveryWorkflowPanel
         loanId={rec.loanId}
