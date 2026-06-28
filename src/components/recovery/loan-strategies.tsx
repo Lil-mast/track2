@@ -32,6 +32,7 @@ interface StrategyRow {
 interface LoanStrategiesProps {
   loanId: string;
   lenderId: string;
+  borrowerId: string;
 }
 
 function pct(value: string | number | null): string | null {
@@ -57,10 +58,19 @@ function statusClasses(status: string): string {
   }
 }
 
-export function LoanStrategies({ loanId, lenderId }: LoanStrategiesProps) {
+export function LoanStrategies({
+  loanId,
+  lenderId,
+  borrowerId,
+}: LoanStrategiesProps) {
   const [strategies, setStrategies] = useState<StrategyRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [notice, setNotice] = useState<{
+    kind: "info" | "error" | "success";
+    text: string;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,6 +95,71 @@ export function LoanStrategies({ loanId, lenderId }: LoanStrategiesProps) {
     load();
   }, [load]);
 
+  const runAnalysis = useCallback(async () => {
+    setAnalyzing(true);
+    setNotice(null);
+    try {
+      // Step 1 — risk score
+      const scoreRes = await fetch("/api/ai/risk-score", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loanId, borrowerId, lenderId }),
+      });
+
+      if (scoreRes.status === 503) {
+        setNotice({
+          kind: "info",
+          text: "AI engine is not enabled yet (Bedrock is disabled). Ask the project owner to set BEDROCK_ENABLED before using Analyze.",
+        });
+        return;
+      }
+
+      const scoreData = await scoreRes.json();
+      if (!scoreRes.ok || !scoreData.success) {
+        throw new Error(scoreData.error ?? `Risk scoring failed (${scoreRes.status})`);
+      }
+
+      // Step 2 — generate strategy from the new score
+      const stratRes = await fetch("/api/ai/generate-strategy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loanId,
+          riskScore: scoreData.riskScore,
+          lenderId,
+        }),
+      });
+
+      if (stratRes.status === 503) {
+        setNotice({
+          kind: "info",
+          text: "Risk score computed, but strategy generation needs Bedrock (disabled).",
+        });
+        return;
+      }
+
+      const stratData = await stratRes.json();
+      if (!stratRes.ok || !stratData.success) {
+        throw new Error(
+          stratData.error ?? `Strategy generation failed (${stratRes.status})`
+        );
+      }
+
+      setNotice({
+        kind: "success",
+        text: `New strategy generated (risk score ${scoreData.riskScore}).`,
+      });
+      await load(); // refresh the list with the new strategy
+    } catch (err) {
+      setNotice({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Analysis failed",
+      });
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [loanId, borrowerId, lenderId, load]);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -97,18 +172,48 @@ export function LoanStrategies({ loanId, lenderId }: LoanStrategiesProps) {
             </span>
           )}
         </CardTitle>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={load}
-          disabled={loading}
-          aria-label="Refresh strategies"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runAnalysis}
+            disabled={analyzing || loading}
+          >
+            {analyzing ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1" />
+            )}
+            Analyze with AI
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            aria-label="Refresh strategies"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent>
+        {notice && (
+          <div
+            className={`mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${
+              notice.kind === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : notice.kind === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span className="break-words">{notice.text}</span>
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
             <Loader2 className="h-4 w-4 animate-spin" />
