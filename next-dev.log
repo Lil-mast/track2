@@ -1,0 +1,50 @@
+
+> recoveryai-track2@0.1.0 dev
+> next dev --port 3000
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://172.30.96.1:3000
+
+ ✓ Starting...
+ ✓ Ready in 30s
+ ○ Compiling / ...
+ ✓ Compiled / in 61.4s (632 modules)
+ GET / 200 in 29275ms
+ ✓ Compiled in 17.1s (238 modules)
+ ✓ Compiled in 523ms (224 modules)
+ GET / 200 in 7493ms
+ ✓ Compiled in 4.2s
+ ✓ Compiled in 8.9s (238 modules)
+ ✓ Compiled in 4s (238 modules)
+ ✓ Compiled in 4.3s (238 modules)
+ ○ Compiling / ...
+ GET / 500 in 923ms
+ GET / 500 in 6519ms
+ ✓ Compiled /_error in 15.3s (975 modules)
+ GET / 200 in 6353ms
+ GET / 200 in 3660ms
+ ✓ Compiled in 37.8s (874 modules)
+ ✓ Compiled in 5.4s (498 modules)
+ ○ Compiling / ...
+ ✓ Compiled / in 2.2s (484 modules)
+ GET / 200 in 7707ms
+ ✓ Compiled in 1151ms (484 modules)
+ GET / 200 in 2272ms
+ GET / 200 in 2141ms
+ GET / 200 in 1135ms
+ ✓ Compiled in 11.8s (390 modules)
+ ✓ Compiled in 14.1s (390 modules)
+ ✓ Compiled in 826ms (390 modules)
+ ✓ Compiled in 52s (498 modules)
+ ✓ Compiled in 91.9s (498 modules)
+ ✓ Compiled in 5.8s (390 modules)
+ ✓ Compiled in 705ms (390 modules)
+ ✓ Compiled in 530ms (390 modules)
+ ✓ Compiled in 278ms (390 modules)
+ ✓ Compiled in 4.5s (390 modules)
+ ✓ Compiled in 519ms (390 modules)
+ ✓ Compiled in 585ms (390 modules)
+ ✓ Compiled in 868ms (390 modules)
+ ✓ Compiled in 448ms (390 modules)
+[?25h

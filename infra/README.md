@@ -32,8 +32,8 @@ Region: **eu-west-2 (London)** · Database: **recoveryai**
 
 ```bash
 cd infra
-npm install
-npm run build        # tsc — optional, ts-node runs directly
+pnpm install
+pnpm run build        # tsc — optional, ts-node runs directly
 npx cdk diff         # review changes
 npx cdk deploy       # deploy; outputs print ARNs/IDs only
 ```

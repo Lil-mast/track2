@@ -1,11 +1,11 @@
 import Link from "next/link";
 import {
-  FileText,
   AlertTriangle,
+  ArrowRight,
+  FileText,
+  Sparkles,
   TrendingUp,
   Users,
-  Sparkles,
-  ArrowRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
