@@ -19,8 +19,7 @@ export function AppSidebar({ lenderName = "Meridian Capital" }: AppSidebarProps)
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+    return pathname === href || pathname.startsWith(href + "/");
   };
 
   const sidebarContent = (
