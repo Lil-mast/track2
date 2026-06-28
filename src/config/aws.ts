@@ -29,3 +29,27 @@ export const awsConfig = {
 } as const;
 
 export type AwsConfig = typeof awsConfig;
+
+/**
+ * Single source of truth for whether the app should use Aurora (vs mock data).
+ *
+ * Must stay in sync everywhere — both the data repository selection
+ * (services/index.ts) and the default lender id (lib/constants.ts) depend on
+ * it. If these disagree, the app queries Aurora with a mock lender id (or vice
+ * versa), which throws at runtime.
+ *
+ * Resolution:
+ *   - AURORA_ENABLED=true  -> Aurora (explicit override)
+ *   - AURORA_ENABLED=false -> mock   (explicit override)
+ *   - otherwise: Aurora when the runtime can reach it (OIDC role + Aurora ARNs,
+ *     i.e. on Vercel). Local dev without AWS_ROLE_ARN stays on mock.
+ */
+export function isAuroraActive(): boolean {
+  if (process.env.AURORA_ENABLED === "true") return true;
+  if (process.env.AURORA_ENABLED === "false") return false;
+  return (
+    !!process.env.AWS_ROLE_ARN &&
+    !!process.env.AURORA_CLUSTER_ARN &&
+    !!process.env.AURORA_SECRET_ARN
+  );
+}
