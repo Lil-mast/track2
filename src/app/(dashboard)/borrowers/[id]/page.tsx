@@ -152,7 +152,7 @@ export default async function BorrowerDetailPage({
                       </Link>
                     </td>
                     <td className="p-4">
-                      <StatusBadge status={loan.status} />
+                      <StatusBadge status={loan.status} type="loan" />
                     </td>
                     <td className="p-4 text-right font-medium">
                       {formatCurrency(loan.outstandingBalance)}
