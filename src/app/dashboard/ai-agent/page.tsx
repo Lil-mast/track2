@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Bot,
   RefreshCw,
@@ -110,6 +111,40 @@ const RADAR_DATA = [
   { metric: "Resolution Rate", value: 69 },
 ];
 
+interface LoanContext {
+  loan: string;
+  borrower: string;
+  balance: number;
+  daysOverdue: number;
+  riskLevel: string;
+  product: string;
+  rate: number;
+  action: string;
+}
+
+function generateLoanAnalysis(ctx: LoanContext): string {
+  const risk = ctx.riskLevel.toUpperCase();
+  const dpd = ctx.daysOverdue;
+  const bal = `$${ctx.balance.toLocaleString()}`;
+
+  const urgency = dpd > 90 ? "CRITICAL — immediate legal or collections escalation advised"
+    : dpd > 30 ? "HIGH — structured outreach and payment plan negotiation recommended"
+    : dpd > 0 ? "MODERATE — proactive SMS/email reminder with hardship screening"
+    : "LOW — standard monitoring, next payment not yet overdue";
+
+  const strategies = dpd > 90
+    ? ["Refer to collections or legal counsel immediately", "Offer one-time settlement at 70–80% of outstanding balance", "File for judgment if no response within 14 days"]
+    : dpd > 30
+    ? ["Propose a 6-month structured repayment plan", "Conduct an empathetic voice call via AI agent (Tue/Thu 10am window)", "Send personalised SMS with secure payment portal link"]
+    : ["Send 7-day early-warning SMS reminder", "Pre-screen for hardship eligibility", "Offer a 30-day payment deferral if warranted"];
+
+  const mlSignal = risk === "CRITICAL" ? "Gradient-Boosted Tree model assigns a 94% probability of default within 60 days. Survival model predicts time-to-default at 18 days. RL outreach policy has deprioritised automated outreach in favour of human escalation."
+    : risk === "HIGH" ? "GBDT default probability: 71%. Survival model projects default in 45 days if no action taken. RL policy recommends structured voice + SMS sequence starting within 48 hours."
+    : "GBDT default probability: 34%. Risk is manageable with proactive engagement. RL policy recommends a low-touch digital-first outreach sequence.";
+
+  return `**AI Recovery Analysis — ${ctx.loan}**\n\n**Borrower**: ${ctx.borrower}\n**Product**: ${ctx.product}\n**Outstanding Balance**: ${bal}\n**Days Past Due**: ${dpd}\n**Risk Level**: ${risk}\n**Interest Rate**: ${ctx.rate}%\n\n---\n\n**Urgency Assessment**\n${urgency}\n\n**Recommended Recovery Strategies**\n${strategies.map((s, i) => `${i + 1}. ${s}`).join("\n")}\n\n**ML Model Signals**\n${mlSignal}\n\n**Current Active Action**: ${ctx.action !== "none" ? ctx.action.replace(/_/g, " ") : "None — action recommended immediately"}\n\nFeel free to ask follow-up questions about this loan, request a full compliance report, or ask me to draft a borrower outreach message.`;
+}
+
 const SUGGESTED_PROMPTS = [
   "Summarize today's agent performance",
   "Which borrowers were escalated today?",
@@ -118,9 +153,28 @@ const SUGGESTED_PROMPTS = [
   "What was the top-performing channel?",
 ];
 
-function generateAgentResponse(userMessage: string, data: AgentData | null): string {
+function generateAgentResponse(userMessage: string, data: AgentData | null, loanCtx?: LoanContext | null): string {
   const msg = userMessage.toLowerCase();
   const convs = data?.conversations ?? [];
+
+  // Loan-specific follow-ups when a loan is in context
+  if (loanCtx) {
+    if (msg.includes("draft") || msg.includes("message") || msg.includes("sms") || msg.includes("email") || msg.includes("outreach")) {
+      return `**Drafted Outreach Message — ${loanCtx.borrower}**\n\n> Dear ${loanCtx.borrower.split(" ")[0]},\n>\n> We noticed your ${loanCtx.product} (ref: ${loanCtx.loan}) has an outstanding balance of $${loanCtx.balance.toLocaleString()}. We understand that financial challenges happen, and we'd like to work with you on a flexible repayment plan.\n>\n> Please call us at 1-800-RECOVERY or click the secure link below to explore options — no judgment, just solutions.\n>\n> — RecoveryAI Financial Services\n\nThis message has been tailored for ${loanCtx.daysOverdue > 30 ? "a firm but empathetic tone" : "a proactive, friendly tone"} based on the borrower's ${loanCtx.riskLevel} risk profile.`;
+    }
+    if (msg.includes("compliance") || msg.includes("regulation") || msg.includes("legal") || msg.includes("fdcpa") || msg.includes("tcpa")) {
+      return `**Compliance Assessment — ${loanCtx.loan}**\n\n**FDCPA**: ${loanCtx.daysOverdue > 0 ? "Ensure all communication is within permitted hours (8am–9pm). No harassment language. Cease-and-desist flag: not active." : "No restrictions — loan is current."}\n\n**TCPA**: Automated SMS/voice requires prior written consent. Consent record status: Verified (2024-01-15).\n\n**ECOA/Fair Lending**: Risk score derived from financial signals only — no protected class attributes used in the GBDT model.\n\n**SR 11-7 Model Risk**: SHAP explainability report available. Top factors: payment history (0.41), days past due (0.38), debt-to-income ratio (0.21).\n\nAll actions for this loan are fully auditable in the Audit Logs tab.`;
+    }
+    if (msg.includes("settlement") || msg.includes("offer") || msg.includes("discount")) {
+      const settlePct = loanCtx.riskLevel === "critical" ? 65 : loanCtx.riskLevel === "high" ? 75 : 85;
+      const settleAmt = Math.round(loanCtx.balance * (settlePct / 100));
+      return `**Settlement Offer Recommendation — ${loanCtx.loan}**\n\nBased on the ${loanCtx.riskLevel.toUpperCase()} risk profile and ${loanCtx.daysOverdue} DPD, the RL policy recommends:\n\n• **Discount to offer**: ${100 - settlePct}% (${settlePct}% of outstanding)\n• **Settlement amount**: $${settleAmt.toLocaleString()}\n• **Payment window**: 14 days from offer date\n• **Rationale**: Survival model indicates recovery probability drops below 40% after 90 DPD — offering a discount now maximises expected recovery value.\n\nShall I draft the settlement offer communication for ${loanCtx.borrower}?`;
+    }
+    if (msg.includes("payment plan") || msg.includes("repayment") || msg.includes("instalment") || msg.includes("installment")) {
+      const monthly = Math.round(loanCtx.balance / 6);
+      return `**Payment Plan Proposal — ${loanCtx.loan}**\n\n**Borrower**: ${loanCtx.borrower}\n**Total Outstanding**: $${loanCtx.balance.toLocaleString()}\n\n**Recommended Plan (6 months)**:\n${Array.from({ length: 6 }, (_, i) => `• Month ${i + 1}: $${monthly.toLocaleString()}`).join("\n")}\n\n**Interest during plan**: Waived (recommended for ${loanCtx.daysOverdue > 60 ? "high-distress" : "standard"} profile)\n**Total recovered**: $${(monthly * 6).toLocaleString()}\n\nThis plan has a 78% acceptance probability based on borrower behavioral signals. Shall I initiate the outreach sequence?`;
+    }
+  }
 
   if (msg.includes("ptp") || msg.includes("promise")) {
     const ptps = convs.filter((c) => c.ptpAmount);
@@ -170,19 +224,30 @@ function generateAgentResponse(userMessage: string, data: AgentData | null): str
 }
 
 export default function AiAgentPage() {
+  return (
+    <Suspense>
+      <AiAgentPageInner />
+    </Suspense>
+  );
+}
+
+function AiAgentPageInner() {
+  const searchParams = useSearchParams();
   const [data, setData] = useState<AgentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<string | null>(null);
+  const [loanCtx, setLoanCtx] = useState<LoanContext | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Hello! I'm the RecoveryAI agentic assistant. Ask me to generate a report, summarize session performance, or analyse sentiment across active conversations.",
+      content: "Hello! I'm the RecoveryAI agentic assistant. Ask me to generate a report, analyse a loan, summarize session performance, or query sentiment across active conversations.",
       timestamp: new Date(),
     },
   ]);
   const [input, setInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const loanAnalysedRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -202,6 +267,42 @@ export default function AiAgentPage() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  // Read loan context from URL params (passed from Loans page)
+  useEffect(() => {
+    const loanParam = searchParams.get("loan");
+    if (!loanParam || loanAnalysedRef.current) return;
+    const ctx: LoanContext = {
+      loan: loanParam,
+      borrower: searchParams.get("borrower") ?? "Unknown Borrower",
+      balance: Number(searchParams.get("balance") ?? 0),
+      daysOverdue: Number(searchParams.get("daysOverdue") ?? 0),
+      riskLevel: searchParams.get("riskLevel") ?? "medium",
+      product: searchParams.get("product") ?? "Loan",
+      rate: Number(searchParams.get("rate") ?? 0),
+      action: searchParams.get("action") ?? "none",
+    };
+    setLoanCtx(ctx);
+    loanAnalysedRef.current = true;
+
+    // Auto-send the analysis after a short delay so the page has rendered
+    const timer = setTimeout(() => {
+      const analysis = generateLoanAnalysis(ctx);
+      const userMsg: ChatMessage = {
+        role: "user",
+        content: `Analyse loan ${ctx.loan} for ${ctx.borrower} — ${ctx.daysOverdue} DPD, ${ctx.riskLevel} risk, $${ctx.balance.toLocaleString()} outstanding.`,
+        timestamp: new Date(),
+      };
+      const assistantMsg: ChatMessage = {
+        role: "assistant",
+        content: analysis,
+        timestamp: new Date(),
+        isReport: true,
+      };
+      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [searchParams]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -217,14 +318,14 @@ export default function AiAgentPage() {
 
     await new Promise((r) => setTimeout(r, 900 + Math.random() * 600));
 
-    const response = generateAgentResponse(userText, data);
+    const response = generateAgentResponse(userText, data, loanCtx);
     const isReport = response.startsWith("**") && response.includes("\n");
     setMessages((prev) => [
       ...prev,
       { role: "assistant", content: response, timestamp: new Date(), isReport },
     ]);
     setChatLoading(false);
-  }, [input, data]);
+  }, [input, data, loanCtx]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -438,16 +539,32 @@ export default function AiAgentPage() {
       {/* Chat interface */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-primary" />
-            AI Report Assistant
-          </CardTitle>
-          <CardDescription>Ask questions or generate reports from live agent session data</CardDescription>
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                AI Report & Analysis Assistant
+              </CardTitle>
+              <CardDescription>Ask questions, analyse loans, or generate reports from live data</CardDescription>
+            </div>
+            {loanCtx && (
+              <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                <span className="text-[11px] font-medium text-blue-300">Analysing: {loanCtx.loan} · {loanCtx.borrower}</span>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {/* Suggested prompts */}
           <div className="flex flex-wrap gap-2 mb-4">
-            {SUGGESTED_PROMPTS.map((p) => (
+            {(loanCtx ? [
+              "Draft a borrower outreach message",
+              "Run a compliance check",
+              "Recommend a settlement offer",
+              "Generate a payment plan",
+              "Summarize today's agent performance",
+            ] : SUGGESTED_PROMPTS).map((p) => (
               <button
                 key={p}
                 onClick={() => handleSend(p)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   FileText,
   RefreshCw,
@@ -10,6 +11,8 @@ import {
   DollarSign,
   TrendingDown,
   Search,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -71,11 +74,26 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 export default function LoansPage() {
+  const router = useRouter();
   const [data, setData] = useState<LoanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Loan | null>(null);
+
+  const analyseWithAI = (loan: Loan) => {
+    const params = new URLSearchParams({
+      loan: loan.loanNumber,
+      borrower: loan.borrower,
+      balance: String(loan.outstandingBalance),
+      daysOverdue: String(loan.daysOverdue),
+      riskLevel: loan.riskLevel,
+      product: loan.product,
+      rate: String(loan.interestRate),
+      action: loan.recoveryAction ?? "none",
+    });
+    router.push(`/dashboard/ai-agent?${params.toString()}`);
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -320,6 +338,40 @@ export default function LoansPage() {
                     <p className="text-sm font-semibold text-primary">{ACTION_LABELS[selected.recoveryAction] ?? selected.recoveryAction}</p>
                   </div>
                 )}
+                {/* AI Recovery Strategies */}
+                <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-primary/5 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-blue-400" />
+                      <p className="text-xs font-semibold text-foreground">AI Recovery Strategies</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    {[
+                      { label: "Offer a structured 6-month payment plan", confidence: 91 },
+                      { label: "Schedule empathetic voice outreach (Tue 10am)", confidence: 84 },
+                      { label: "Send personalised SMS settlement offer", confidence: 77 },
+                    ].map((s) => (
+                      <div key={s.label} className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <p className="text-[11px] text-foreground leading-tight">{s.label}</p>
+                          <div className="mt-1 h-1 rounded-full bg-muted/30 overflow-hidden">
+                            <div className="h-full rounded-full bg-blue-400/60 transition-all duration-700" style={{ width: `${s.confidence}%` }} />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-semibold text-blue-400 shrink-0">{s.confidence}%</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => analyseWithAI(selected)}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-500/15 border border-blue-500/30 hover:bg-blue-500/25 hover:border-blue-500/50 transition-all py-2.5 text-xs font-semibold text-blue-300"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Analyse with AI
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Select a loan to view details.</p>
