@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, MonitorPlay, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function HeroSection() {
@@ -74,12 +74,20 @@ export function HeroSection() {
             Reset Simulation
           </button>
         ) : (
-          <Button variant="outline" size="pill" asChild>
-            <Link href="/dashboard">
-              <Sparkles className="h-4 w-4" />
-              View Dashboard
-            </Link>
-          </Button>
+          <>
+            <Button variant="outline" size="pill" asChild>
+              <Link href="/dashboard">
+                <Sparkles className="h-4 w-4" />
+                View Dashboard
+              </Link>
+            </Button>
+            <Button variant="outline" size="pill" asChild>
+              <Link href="/pitch">
+                <MonitorPlay className="h-4 w-4" />
+                Presentation
+              </Link>
+            </Button>
+          </>
         )}
       </div>
 

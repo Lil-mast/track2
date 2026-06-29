@@ -14,6 +14,7 @@ import {
   Database,
   Bot,
   LogOut,
+  MonitorPlay,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -111,6 +112,13 @@ export function AppSidebar({ lenderName = "Meridian Capital" }: AppSidebarProps)
       </ScrollArea>
 
       <div className="p-4 border-t border-sidebar-border shrink-0 space-y-3">
+        <Link
+          href="/pitch"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 hover:text-blue-300 transition-colors w-full"
+        >
+          <MonitorPlay className="h-4 w-4 shrink-0" />
+          Presentation
+        </Link>
         <div className="rounded-lg bg-sidebar-accent/50 px-3 py-2.5">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
