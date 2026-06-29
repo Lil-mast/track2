@@ -45,11 +45,10 @@ export type AwsConfig = typeof awsConfig;
  *     i.e. on Vercel). Local dev without AWS_ROLE_ARN stays on mock.
  */
 export function isAuroraActive(): boolean {
+  // Require an explicit opt-in — never auto-detect from env vars alone.
+  // Having the ARNs present is not sufficient: the OIDC token must also be
+  // available and the cluster must be reachable. Without a confirmed working
+  // Aurora setup, keep the app on mock data so the dashboard always loads.
   if (process.env.AURORA_ENABLED === "true") return true;
-  if (process.env.AURORA_ENABLED === "false") return false;
-  return (
-    !!process.env.AWS_ROLE_ARN &&
-    !!process.env.AURORA_CLUSTER_ARN &&
-    !!process.env.AURORA_SECRET_ARN
-  );
+  return false;
 }
