@@ -1,20 +1,36 @@
-import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
 
-// Professional, premium modern font configuration matching Framer style
-const plusJakartaSans = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: `${APP_NAME} — Generative AI for Smart Debt Recovery`,
-    template: `%s | ${APP_NAME}`,
+  title: "RecoveryAI — Financial Empowerment, Powered by AI",
+  description:
+    "AI-powered loan recovery platform for B2B lenders. Context-aware generative AI designs hyper-personalized repayment strategies, maximizing recovery rates while safeguarding customer trust.",
+  keywords: [
+    "loan recovery",
+    "AI",
+    "fintech",
+    "B2B lending",
+    "debt recovery",
+    "recovery automation",
+  ],
+  openGraph: {
+    title: "RecoveryAI — Financial Empowerment, Powered by AI",
+    description:
+      "AI-powered loan recovery platform for B2B lenders.",
+    type: "website",
   },
-  description: APP_DESCRIPTION,
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0b0f19",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -23,22 +39,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark scroll-smooth">
+    <html lang="en" className="dark">
       <head>
-        {/* Google Fonts Material Symbols */}
+        <link
+          rel="icon"
+          href="/favicon.png"
+          type="image/png"
+        />
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
         />
       </head>
-      <body className={`${plusJakartaSans.variable} font-sans bg-[#030712] text-slate-100 antialiased min-h-screen relative overflow-x-hidden`}>
-        {/* Subtle Ambient Background Orbs */}
-        <div className="absolute top-[-10%] left-[-20%] w-[60vw] h-[60vw] rounded-full bg-blue-600/10 blur-[150px] pointer-events-none z-0" />
-        <div className="absolute top-[40%] right-[-20%] w-[50vw] h-[50vw] rounded-full bg-cyan-500/5 blur-[120px] pointer-events-none z-0" />
-        <div className="absolute bottom-[10%] left-[-10%] w-[55vw] h-[55vw] rounded-full bg-indigo-600/5 blur-[160px] pointer-events-none z-0" />
-
-        {/* Real App Container */}
-        <div className="relative z-10">{children}</div>
+      <body
+        className={`${inter.variable} font-sans antialiased bg-background text-foreground`}
+      >
+        {children}
       </body>
     </html>
   );
