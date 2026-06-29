@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X, Sparkles } from "lucide-react";
+import { Menu, X, Sparkles, LogOut } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { navigationItems } from "@/config/navigation";
@@ -63,13 +63,20 @@ export function AppSidebar({ lenderName = "Meridian Capital" }: AppSidebarProps)
         </nav>
       </ScrollArea>
 
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border space-y-2">
         <div className="rounded-md bg-sidebar-accent/50 px-3 py-2">
           <p className="text-xs font-medium text-sidebar-foreground">AI Engine</p>
           <p className="text-xs text-sidebar-foreground/60 mt-0.5">
             Amazon Nova Pro · Active
           </p>
         </div>
+        <Link
+          href="/"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-destructive transition-colors"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Sign Out
+        </Link>
       </div>
     </>
   );

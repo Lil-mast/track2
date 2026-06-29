@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, Search } from "lucide-react";
+import Link from "next/link";
+import { Bell, Search, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,18 @@ export function AppHeader({ title }: AppHeaderProps) {
             </p>
           </div>
         </div>
+
+        <Button variant="ghost" size="sm" asChild className="hidden sm:flex items-center gap-1.5 text-muted-foreground hover:text-destructive pl-2 border-l rounded-none">
+          <Link href="/">
+            <LogOut className="h-4 w-4" />
+            <span className="text-xs">Sign Out</span>
+          </Link>
+        </Button>
+        <Button variant="ghost" size="icon" asChild className="sm:hidden text-muted-foreground hover:text-destructive">
+          <Link href="/" aria-label="Sign Out">
+            <LogOut className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
     </header>
   );
