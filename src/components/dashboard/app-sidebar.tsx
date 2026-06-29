@@ -12,7 +12,6 @@ import {
   Shield,
   ScrollText,
   Database,
-  Megaphone,
   Bot,
   LogOut,
 } from "lucide-react";
@@ -35,7 +34,6 @@ const navigationGroups = [
     items: [
       { title: "Recovery", href: "/dashboard/recovery", icon: Sparkles },
       { title: "Data Ingestion", href: "/dashboard/ingestion", icon: Database },
-      { title: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
       { title: "Agentic AI", href: "/dashboard/ai-agent", icon: Bot },
     ],
   },
