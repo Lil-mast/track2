@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { FileText, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -78,6 +78,7 @@ export default async function LoansPage({ searchParams }: LoansPageProps) {
                     <th className="text-left font-medium p-4 hidden lg:table-cell">
                       Purpose
                     </th>
+                    <th className="text-left font-medium p-4">AI</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -132,6 +133,15 @@ export default async function LoansPage({ searchParams }: LoansPageProps) {
                       </td>
                       <td className="p-4 hidden lg:table-cell text-muted-foreground truncate max-w-[200px]">
                         {loan.purpose}
+                      </td>
+                      <td className="p-4">
+                        <Link
+                          href={`/ai-agent?loan=${loan.loanNumber}&borrower=${encodeURIComponent(`${loan.borrower.firstName} ${loan.borrower.lastName}`)}&balance=${loan.outstandingBalance}&daysOverdue=${loan.daysOverdue}&riskLevel=${loan.riskLevel}&product=${encodeURIComponent(loan.purpose ?? "Loan")}&rate=${loan.interestRate}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
+                        >
+                          <Sparkles className="h-3 w-3" />
+                          Analyse
+                        </Link>
                       </td>
                     </tr>
                   ))}

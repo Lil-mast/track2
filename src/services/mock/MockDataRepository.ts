@@ -2,11 +2,13 @@ import {
   mockBorrowers,
   mockLoans,
   mockPayments,
-  mockRecommendations,
   mockRules,
   mockLenders,
 } from "@/data/mock";
-import { getAuditLogs } from "@/data/mock/runtime-store";
+import {
+  getAuditLogs,
+  getRuntimeRecommendations,
+} from "@/data/mock/runtime-store";
 import type { IDataRepository } from "@/services/interfaces/IDataRepository";
 import type { AuditLog } from "@/types/audit";
 import type { Borrower, BorrowerWithLoans } from "@/types/borrower";
@@ -62,7 +64,7 @@ function enrichLoanWithBorrower(
 }
 
 function enrichRecommendation(
-  rec: (typeof mockRecommendations)[0]
+  rec: ReturnType<typeof getRuntimeRecommendations>[0]
 ): RecoveryRecommendationWithContext {
   const loan = mockLoans.find((l) => l.id === rec.loanId)!;
   const borrower = mockBorrowers.find((b) => b.id === rec.borrowerId)!;
@@ -205,7 +207,7 @@ export class MockDataRepository implements IDataRepository {
 
     const enriched = enrichLoanWithBorrower(loan);
     const payments = mockPayments.filter((p) => p.loanId === loanId);
-    const recommendations = mockRecommendations
+    const recommendations = getRuntimeRecommendations()
       .filter((r) => r.loanId === loanId)
       .map((r) => ({
         id: r.id,
@@ -239,7 +241,7 @@ export class MockDataRepository implements IDataRepository {
     lenderId: string,
     filters: ListFilters = {}
   ): Promise<PaginatedResult<RecoveryRecommendationWithContext>> {
-    let items = mockRecommendations
+    let items = getRuntimeRecommendations()
       .filter((r) => r.lenderId === lenderId)
       .map(enrichRecommendation);
 
@@ -269,7 +271,7 @@ export class MockDataRepository implements IDataRepository {
     lenderId: string,
     recommendationId: string
   ): Promise<RecoveryRecommendationWithContext | null> {
-    const rec = mockRecommendations.find(
+    const rec = getRuntimeRecommendations().find(
       (r) => r.id === recommendationId && r.lenderId === lenderId
     );
     return rec ? enrichRecommendation(rec) : null;
@@ -279,7 +281,7 @@ export class MockDataRepository implements IDataRepository {
     lenderId: string,
     limit = 5
   ): Promise<RecoveryRecommendationWithContext[]> {
-    return mockRecommendations
+    return getRuntimeRecommendations()
       .filter((r) => r.lenderId === lenderId)
       .map(enrichRecommendation)
       .sort(

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { query } from "@/lib/aurora/db";
+import { isAuroraActive } from "@/config/aws";
+import { updateRecommendationStatus } from "@/data/mock/runtime-store";
 
 /**
  * PATCH /api/ai/strategy/[id]
@@ -43,9 +45,8 @@ export async function PATCH(
   try {
     const { id } = await params;
 
-    if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-    ) {
+    // Accept both UUID format (Aurora) and rec_xxx / wf_xxx format (mock store)
+    if (!id || id.trim().length === 0 || id.length > 128) {
       return NextResponse.json(
         { error: "Invalid strategy id" },
         { status: 400 }
@@ -54,6 +55,24 @@ export async function PATCH(
 
     const body = await request.json();
     const { action, lenderId } = requestSchema.parse(body);
+
+    // ── Mock path (Aurora disabled) ──────────────────────────────────────────
+    if (!isAuroraActive()) {
+      const statusMap: Record<string, import("@/types").RecommendationStatus> = {
+        approve: "approved",
+        reject: "rejected",
+        execute: "executed",
+      };
+      const updated = updateRecommendationStatus(id, statusMap[action], lenderId);
+      if (!updated) {
+        return NextResponse.json(
+          { error: "Strategy not found or not owned by this lender" },
+          { status: 404 }
+        );
+      }
+      return NextResponse.json({ success: true, strategy: updated });
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     const result = await query(
       `UPDATE strategies
