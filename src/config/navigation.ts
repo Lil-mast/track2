@@ -5,6 +5,8 @@ import {
   Shield,
   ScrollText,
   Sparkles,
+  Database,
+  Bot,
 } from "lucide-react";
 
 export const navigationItems = [
@@ -27,6 +29,16 @@ export const navigationItems = [
     title: "Recovery",
     href: "/recovery",
     icon: Sparkles,
+  },
+  {
+    title: "Data Ingestion",
+    href: "/ingestion",
+    icon: Database,
+  },
+  {
+    title: "Agentic AI",
+    href: "/ai-agent",
+    icon: Bot,
   },
   {
     title: "Rules",

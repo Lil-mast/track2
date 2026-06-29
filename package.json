@@ -10,7 +10,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@aws-sdk/client-rds-data": "^3.1075.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1073.0",
+    "@aws-sdk/client-rds-data": "^3.1073.0",
     "@radix-ui/react-avatar": "^1.1.2",
     "@radix-ui/react-dialog": "^1.1.4",
     "@radix-ui/react-dropdown-menu": "^2.1.4",
@@ -31,7 +32,7 @@
     "react-dom": "^19.0.0",
     "recharts": "^3.9.0",
     "tailwind-merge": "^2.6.0",
-    "zod": "^4.4.3"
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

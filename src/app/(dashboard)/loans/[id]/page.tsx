@@ -36,7 +36,7 @@ export default async function LoanDetailPage({ params }: LoanDetailPageProps) {
         description={`${loan.borrower.firstName} ${loan.borrower.lastName}${loan.borrower.company ? ` · ${loan.borrower.company}` : ""}`}
       >
         <div className="flex gap-2">
-          <StatusBadge status={loan.status} />
+          <StatusBadge status={loan.status} type="loan" />
           <StatusBadge status={loan.riskLevel} type="risk" />
         </div>
       </PageHeader>
@@ -123,9 +123,19 @@ export default async function LoanDetailPage({ params }: LoanDetailPageProps) {
               <Sparkles className="h-4 w-4 text-primary" />
               AI Recommendations
             </CardTitle>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/recovery">View all</Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="default" size="sm" asChild>
+                <Link
+                  href={`/ai-agent?loan=${loan.loanNumber}&borrower=${encodeURIComponent(`${loan.borrower.firstName} ${loan.borrower.lastName}`)}&balance=${loan.outstandingBalance}&daysOverdue=${loan.daysOverdue}&riskLevel=${loan.riskLevel}&product=${encodeURIComponent(loan.purpose ?? "Loan")}&rate=${loan.interestRate}`}
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  Analyse with AI
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/recovery">View all</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {loan.recommendations.length === 0 ? (
