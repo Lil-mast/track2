@@ -11,19 +11,41 @@ import {
   FileText,
   Shield,
   ScrollText,
+  Database,
+  Megaphone,
+  Bot,
+  LogOut,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 
-const navigationItems = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Borrowers", href: "/dashboard/borrowers", icon: Users },
-  { title: "Loans", href: "/dashboard/loans", icon: FileText },
-  { title: "Recovery", href: "/dashboard/recovery", icon: Sparkles },
-  { title: "Rules", href: "/dashboard/rules", icon: Shield },
-  { title: "Audit Logs", href: "/dashboard/audit-logs", icon: ScrollText },
+const navigationGroups = [
+  {
+    label: "Overview",
+    items: [
+      { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { title: "Borrowers", href: "/dashboard/borrowers", icon: Users },
+      { title: "Loans", href: "/dashboard/loans", icon: FileText },
+    ],
+  },
+  {
+    label: "AI Platform",
+    items: [
+      { title: "Recovery", href: "/dashboard/recovery", icon: Sparkles },
+      { title: "Data Ingestion", href: "/dashboard/ingestion", icon: Database },
+      { title: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
+      { title: "Agentic AI", href: "/dashboard/ai-agent", icon: Bot },
+    ],
+  },
+  {
+    label: "Compliance",
+    items: [
+      { title: "Rules", href: "/dashboard/rules", icon: Shield },
+      { title: "Audit Logs", href: "/dashboard/audit-logs", icon: ScrollText },
+    ],
+  },
 ] as const;
 
 interface AppSidebarProps {
@@ -55,33 +77,42 @@ export function AppSidebar({ lenderName = "Meridian Capital" }: AppSidebarProps)
         </p>
       </div>
 
-      <ScrollArea className="flex-1 px-3 py-1">
-        <nav aria-label="Dashboard navigation" className="flex flex-col gap-0.5">
-          {navigationItems.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                )}
-                aria-current={active ? "page" : undefined}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {item.title}
-              </Link>
-            );
-          })}
+      <ScrollArea className="flex-1 px-3 py-2">
+        <nav aria-label="Dashboard navigation" className="flex flex-col gap-4">
+          {navigationGroups.map((group) => (
+            <div key={group.label}>
+              <p className="text-[10px] font-semibold text-sidebar-foreground/40 uppercase tracking-widest px-3 mb-1">
+                {group.label}
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                        active
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                      )}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {item.title}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
       </ScrollArea>
 
-      <div className="p-4 border-t border-sidebar-border shrink-0">
+      <div className="p-4 border-t border-sidebar-border shrink-0 space-y-3">
         <div className="rounded-lg bg-sidebar-accent/50 px-3 py-2.5">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -93,6 +124,13 @@ export function AppSidebar({ lenderName = "Meridian Capital" }: AppSidebarProps)
             Amazon Nova Pro · Active
           </p>
         </div>
+        <Link
+          href="/"
+          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/60 hover:bg-red-500/10 hover:text-red-400 transition-colors w-full"
+        >
+          <LogOut className="h-4 w-4 shrink-0" />
+          Log Out
+        </Link>
       </div>
     </>
   );

@@ -1,4 +1,5 @@
-import { Bell, Search } from "lucide-react";
+import Link from "next/link";
+import { Bell, Search, LogOut } from "lucide-react";
 
 export function AppHeader() {
   return (
@@ -35,6 +36,15 @@ export function AppHeader() {
             <p className="text-[10px] text-muted-foreground mt-0.5">Admin</p>
           </div>
         </div>
+
+        <Link
+          href="/"
+          className="flex items-center gap-1.5 pl-3 border-l border-border text-muted-foreground hover:text-red-400 transition-colors text-xs font-medium"
+          aria-label="Log out"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          <span className="hidden sm:block">Log Out</span>
+        </Link>
       </div>
     </header>
   );
