@@ -25,6 +25,7 @@ function buildClient(clusterArn: string): RDSDataClient {
 }
 
 let cachedClient: RDSDataClient | null = null;
+let cachedArn: string | null = null;
 
 function getClient(): RDSDataClient {
   const clusterArn = process.env.AURORA_CLUSTER_ARN;
@@ -33,8 +34,10 @@ function getClient(): RDSDataClient {
       "Database not configured: AURORA_CLUSTER_ARN must be set in environment variables."
     );
   }
-  if (!cachedClient) {
+  // Reset the cached client if the ARN has changed (e.g. between deployments).
+  if (!cachedClient || cachedArn !== clusterArn) {
     cachedClient = buildClient(clusterArn);
+    cachedArn = clusterArn;
   }
   return cachedClient;
 }

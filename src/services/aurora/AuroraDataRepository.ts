@@ -659,6 +659,9 @@ export class AuroraDataRepository implements IDataRepository {
     lenderId: string,
     limit = 5
   ): Promise<RecoveryRecommendationWithContext[]> {
+    // Aurora RDS Data API does not support parameterized LIMIT/OFFSET —
+    // inline it as a validated integer to prevent any injection risk.
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
     const { rows } = await query(
       `SELECT s.*, l.loan_number, l.status AS loan_status, l.risk_level AS loan_risk_level,
          ${LOAN_COMPUTED},
@@ -669,8 +672,8 @@ export class AuroraDataRepository implements IDataRepository {
        JOIN users b ON l.borrower_id = b.id
        WHERE s.lender_id = :lenderId
        ORDER BY s.created_at DESC
-       LIMIT :limit`,
-      { lenderId, limit }
+       LIMIT ${safeLimit}`,
+      { lenderId }
     );
 
     return rows.map((row) => mapRecommendationRow(row, row, row));
