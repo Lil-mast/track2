@@ -6,7 +6,7 @@ import {
   mockRecommendations,
 } from "@/data/mock";
 import type { ContactRecord, WorkflowInputContext } from "@/types/recovery-engine";
-import type { LoanWithBorrower } from "@/types/loan";
+import type { LoanWithBorrower, LoanWithDetails } from "@/types/loan";
 import type { Payment } from "@/types/payment";
 
 function buildContactHistory(
@@ -78,10 +78,11 @@ function computeOnTimeRate(payments: Payment[]): number {
 }
 
 export function buildWorkflowContext(
-  loan: LoanWithBorrower,
+  loan: LoanWithBorrower | LoanWithDetails,
   payments: Payment[]
 ): WorkflowInputContext {
-  const borrower = mockBorrowers.find((b) => b.id === loan.borrowerId);
+  // lastContactDate is only available in mock data — safe to skip for Aurora.
+  const mockBorrower = mockBorrowers.find((b) => b.id === loan.borrowerId);
 
   return {
     loan,
@@ -89,7 +90,7 @@ export function buildWorkflowContext(
     contactHistory: buildContactHistory(
       loan.id,
       loan.borrowerId,
-      borrower?.lastContactDate
+      mockBorrower?.lastContactDate
     ),
     daysOverdue: loan.daysOverdue,
     missedPaymentsCount: loan.missedPaymentsCount,
