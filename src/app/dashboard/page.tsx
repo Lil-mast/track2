@@ -6,29 +6,45 @@ import {
   Sparkles,
   TrendingUp,
   Users,
-  CheckCircle,
   Clock,
+  CheckCircle,
   XCircle,
 } from "lucide-react";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
+import { StatusBadge } from "@/components/shared/status-badge";
 import {
-  StatCard,
-  StatusBadge,
-  PageHeader,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Button,
-  formatCurrency,
-  formatDateTime,
-  recoveryActionLabels,
-  type RecoveryAction,
-  type RiskLevel,
-  type RecommendationStatus,
-} from "recoveryai-ds";
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 
-// Mock data (no AWS required)
+type RecoveryAction =
+  | "email_reminder"
+  | "sms_reminder"
+  | "phone_call"
+  | "payment_plan"
+  | "hardship_review"
+  | "legal_notice"
+  | "collections_referral";
+
+type RecommendationStatus = "pending" | "approved" | "rejected" | "executed" | "expired";
+type RiskLevel = "low" | "medium" | "high" | "critical";
+
+const recoveryActionLabels: Record<RecoveryAction, string> = {
+  email_reminder: "Email Reminder",
+  sms_reminder: "SMS Reminder",
+  phone_call: "Phone Call",
+  payment_plan: "Payment Plan",
+  hardship_review: "Hardship Review",
+  legal_notice: "Legal Notice",
+  collections_referral: "Collections Referral",
+};
+
 const stats = {
   totalLoans: 14,
   activeLoans: 3,
@@ -46,11 +62,7 @@ const recentRecommendations = [
     status: "pending" as RecommendationStatus,
     confidenceScore: 0.92,
     generatedAt: "2025-06-08T08:30:00Z",
-    borrower: {
-      firstName: "Robert",
-      lastName: "Kim",
-      company: "Pacific Builders Inc.",
-    },
+    borrower: { firstName: "Robert", lastName: "Kim", company: "Pacific Builders Inc." },
   },
   {
     id: "rec_002",
@@ -59,11 +71,7 @@ const recentRecommendations = [
     status: "pending" as RecommendationStatus,
     confidenceScore: 0.87,
     generatedAt: "2025-06-07T14:15:00Z",
-    borrower: {
-      firstName: "Wei",
-      lastName: "Chen",
-      company: "Apex Logistics Group",
-    },
+    borrower: { firstName: "Wei", lastName: "Chen", company: "Apex Logistics Group" },
   },
   {
     id: "rec_003",
@@ -72,11 +80,7 @@ const recentRecommendations = [
     status: "approved" as RecommendationStatus,
     confidenceScore: 0.79,
     generatedAt: "2025-06-06T10:00:00Z",
-    borrower: {
-      firstName: "Marcus",
-      lastName: "Webb",
-      company: "NovaBio Health Sciences",
-    },
+    borrower: { firstName: "Marcus", lastName: "Webb", company: "NovaBio Health Sciences" },
   },
   {
     id: "rec_004",
@@ -85,11 +89,7 @@ const recentRecommendations = [
     status: "executed" as RecommendationStatus,
     confidenceScore: 0.84,
     generatedAt: "2025-06-05T11:00:00Z",
-    borrower: {
-      firstName: "Sarah",
-      lastName: "Whitfield",
-      company: "Steel & Sons Mfg.",
-    },
+    borrower: { firstName: "Sarah", lastName: "Whitfield", company: "Steel & Sons Mfg." },
   },
   {
     id: "rec_005",
@@ -98,11 +98,7 @@ const recentRecommendations = [
     status: "executed" as RecommendationStatus,
     confidenceScore: 0.91,
     generatedAt: "2025-06-04T09:00:00Z",
-    borrower: {
-      firstName: "Alex",
-      lastName: "Torres",
-      company: "TechVault Solutions",
-    },
+    borrower: { firstName: "Alex", lastName: "Torres", company: "TechVault Solutions" },
   },
 ];
 
@@ -149,7 +145,7 @@ const overdueLoans = [
   },
 ];
 
-const statusIcons: Record<string, React.ElementType> = {
+const statusIcons: Record<RecommendationStatus, typeof Clock> = {
   pending: Clock,
   approved: CheckCircle,
   executed: CheckCircle,
@@ -204,7 +200,7 @@ export default function DashboardPage() {
 
       {/* Main content grid */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent AI Recommendations */}
+        {/* AI Recommendations */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
@@ -235,26 +231,20 @@ export default function DashboardPage() {
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {rec.borrower.firstName} {rec.borrower.lastName}
-                        {rec.borrower.company &&
-                          ` · ${rec.borrower.company}`}
+                        {rec.borrower.company && ` · ${rec.borrower.company}`}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-muted-foreground">
                           {recoveryActionLabels[rec.action]}
                         </span>
-                        <span className="text-xs text-muted-foreground">
-                          ·
-                        </span>
+                        <span className="text-xs text-muted-foreground">·</span>
                         <span className="text-xs font-medium text-primary">
                           {Math.round(rec.confidenceScore * 100)}% confidence
                         </span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
-                      <StatusBadge
-                        status={rec.status}
-                        type="recommendation"
-                      />
+                      <StatusBadge status={rec.status} type="recommendation" />
                       <span className="text-xs text-muted-foreground">
                         {formatDateTime(rec.generatedAt)}
                       </span>

@@ -59,9 +59,6 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.7(react@19.2.7)
-      recoveryai-ds:
-        specifier: file:./packages/recoveryai-ds
-        version: file:packages/recoveryai-ds(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tailwindcss@3.4.19)
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.1
@@ -1110,13 +1107,6 @@ packages:
     resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
     engines: {node: '>=8.10.0'}
 
-  recoveryai-ds@file:packages/recoveryai-ds:
-    resolution: {directory: packages/recoveryai-ds, type: directory}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-      tailwindcss: '>=3'
-
   resolve@1.22.12:
     resolution: {integrity: sha512-TyeJ1zif53BPfHootBGwPRYT1RUt6oGWsaQr8UyZW/eAm9bKoijtvruSDEmZHm92CwS9nj7/fWttqPCgzep8CA==}
     engines: {node: '>= 0.4'}
@@ -2131,12 +2121,6 @@ snapshots:
   readdirp@3.6.0:
     dependencies:
       picomatch: 2.3.2
-
-  recoveryai-ds@file:packages/recoveryai-ds(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(tailwindcss@3.4.19):
-    dependencies:
-      react: 19.2.7
-      react-dom: 19.2.7(react@19.2.7)
-      tailwindcss: 3.4.19
 
   resolve@1.22.12:
     dependencies:

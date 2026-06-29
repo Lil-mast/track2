@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
-import { Button } from "recoveryai-ds";
+import { Button } from "@/components/ui/button";
 
 const navLinks = [
   { label: "Features", href: "#features" },

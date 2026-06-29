@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Sparkles } from "lucide-react";
-import { Button } from "recoveryai-ds";
+import { Button } from "@/components/ui/button";
 
 export function HeroSection() {
   const [demoStatus, setDemoStatus] = useState<

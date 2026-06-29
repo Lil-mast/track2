@@ -13,8 +13,8 @@ import {
   ScrollText,
 } from "lucide-react";
 import { useState } from "react";
-import { cn } from "recoveryai-ds";
-import { ScrollArea } from "recoveryai-ds";
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 
 const navigationItems = [
