@@ -31,10 +31,3 @@ export function formatDateTime(date: string | Date): string {
     minute: "2-digit",
   }).format(new Date(date));
 }
-
-export function daysOverdue(dueDate: string): number {
-  const due = new Date(dueDate);
-  const now = new Date();
-  const diff = now.getTime() - due.getTime();
-  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
-}
