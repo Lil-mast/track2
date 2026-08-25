@@ -3,9 +3,7 @@
 /**
  * LoanStrategies — live consumer of GET /api/ai/strategies/[loanId].
  *
- * Demonstrates the browser → API route → RDS Data API → Aurora read path:
- * fetches every AI-generated recovery strategy for a loan and renders the
- * full plan. Tenant-scoped by lenderId (passed from the server component).
+ * Fetches AI-generated recovery strategies for a loan from Convex via API route.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -217,7 +215,7 @@ export function LoanStrategies({
         {loading && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading strategies from Aurora…
+            Loading strategies…
           </div>
         )}
 

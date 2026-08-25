@@ -1,4 +1,4 @@
-import { Route, Radar, MessageSquare } from "lucide-react";
+import { MessageSquare, Radar, Route } from "lucide-react";
 
 const features = [
   {
@@ -6,24 +6,18 @@ const features = [
     title: "Dynamic Workflows",
     description:
       "Automatically adapt communication channels and messaging templates in response to real-time borrower behavioral cues.",
-    glow: "hover:border-blue-500/30 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]",
-    iconBg: "text-blue-400 bg-blue-500/10",
   },
   {
     Icon: Radar,
     title: "Predictive Risk Scoring",
     description:
       "Leverage advanced heuristics to pre-emptively forecast defaults, targeting accounts before delinquency intensifies.",
-    glow: "hover:border-indigo-500/30 hover:shadow-[0_0_30px_rgba(99,102,241,0.15)]",
-    iconBg: "text-indigo-400 bg-indigo-500/10",
   },
   {
     Icon: MessageSquare,
     title: "Sentiment Analysis",
     description:
       "Parse incoming communications to assess borrower intent, seamlessly escalating hot cases to human agents.",
-    glow: "hover:border-cyan-500/30 hover:shadow-[0_0_30px_rgba(6,182,212,0.15)]",
-    iconBg: "text-cyan-400 bg-cyan-500/10",
   },
 ];
 
@@ -31,26 +25,23 @@ export function FeaturesSection() {
   return (
     <section
       id="features"
-      className="relative max-w-7xl mx-auto px-4 sm:px-6 py-28 overflow-hidden"
+      className="relative mx-auto max-w-7xl overflow-hidden px-4 py-28 sm:px-6"
     >
-      {/* Before vs After */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-20">
-        {/* Before */}
-        <div className="rounded-2xl border border-rose-500/10 bg-rose-950/5 p-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-[80px] pointer-events-none" />
-          <div className="flex items-center gap-3 mb-6">
-            <span className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center font-bold text-sm">
+      <div className="mb-20 grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <div className="relative overflow-hidden rounded-[1.75rem] border border-[#5a210f]/15 bg-[#fff8ed]/90 p-8 shadow-[0_20px_50px_rgba(74,24,12,0.1)] backdrop-blur-sm">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#42170d]/10 text-sm font-bold text-[#42170d]">
               ✕
             </span>
-            <span className="text-xs font-bold text-rose-400 uppercase tracking-widest">
+            <span className="text-xs font-bold uppercase tracking-widest text-[#7f452f]">
               Standard Recovery Model
             </span>
           </div>
-          <h3 className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-4">
+          <h3 className="mb-4 text-2xl font-bold tracking-tight text-[#42170d] md:text-3xl">
             Legacy collection cycles are{" "}
-            <span className="text-gradient-red">costly and aggressive.</span>
+            <span className="text-[#b42318]">costly and aggressive.</span>
           </h3>
-          <ul className="space-y-4 mb-8">
+          <ul className="mb-8 space-y-4">
             {[
               "Aggressive, tone-deaf automated calls irritate borrowers.",
               "Poor data segmentation causes late-stage default oversight.",
@@ -59,55 +50,53 @@ export function FeaturesSection() {
             ].map((item) => (
               <li
                 key={item}
-                className="flex items-start gap-3 text-sm text-slate-400"
+                className="flex items-start gap-3 text-sm text-[#7f452f]"
               >
-                <span className="text-rose-500/80 text-lg shrink-0 mt-0.5 leading-none">
+                <span className="mt-0.5 shrink-0 text-lg leading-none text-[#b42318]/80">
                   ○
                 </span>
                 {item}
               </li>
             ))}
           </ul>
-          <div className="h-28 w-full border-t border-rose-500/10 mt-6 relative overflow-hidden bg-rose-500/[0.02] rounded-lg p-4 flex items-end">
-            <div className="absolute top-3 left-4 text-[10px] font-bold text-rose-400 uppercase tracking-wider">
+          <div className="relative mt-6 flex h-28 w-full items-end overflow-hidden rounded-lg border border-[#5a210f]/10 bg-[#42170d]/[0.04] p-4">
+            <div className="absolute left-4 top-3 text-[10px] font-bold uppercase tracking-wider text-[#7f452f]">
               Average recovery % over 90 days
             </div>
             <svg
-              className="w-full h-16"
+              aria-label="Declining recovery trend chart"
+              className="h-16 w-full"
               preserveAspectRatio="none"
               viewBox="0 0 100 100"
-              aria-label="Declining recovery trend chart"
             >
               <path
                 d="M0,20 L25,45 L50,60 L75,70 L100,90"
                 fill="none"
-                stroke="#ef4444"
+                stroke="#b42318"
                 strokeWidth="2.5"
               />
-              <circle cx="100" cy="90" r="4" fill="#ef4444" />
+              <circle cx="100" cy="90" fill="#b42318" r="4" />
             </svg>
-            <div className="absolute bottom-3 right-4 text-xs font-extrabold text-rose-400">
+            <div className="absolute bottom-3 right-4 text-xs font-extrabold text-[#b42318]">
               -62% Repayment Decline
             </div>
           </div>
         </div>
 
-        {/* After */}
-        <div className="rounded-2xl border border-blue-500/20 bg-blue-950/5 p-8 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 blur-[80px] pointer-events-none" />
-          <div className="flex items-center gap-3 mb-6">
-            <span className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm">
+        <div className="relative overflow-hidden rounded-[1.75rem] border border-[#5a210f]/20 bg-[#42170d] p-8 text-[#fff8ed] shadow-[0_20px_50px_rgba(74,24,12,0.18)]">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ff9b55]/20 text-sm text-[#ffc990]">
               ✓
             </span>
-            <span className="text-xs font-bold text-blue-400 uppercase tracking-widest">
+            <span className="text-xs font-bold uppercase tracking-widest text-[#ffc990]">
               RecoveryAI Model
             </span>
           </div>
-          <h3 className="text-2xl md:text-3xl font-bold text-white tracking-tight mb-4">
+          <h3 className="mb-4 text-2xl font-bold tracking-tight md:text-3xl">
             Dynamic, empathetic engagement{" "}
-            <span className="text-gradient-green">accelerates success.</span>
+            <span className="text-[#ff9b55]">accelerates success.</span>
           </h3>
-          <ul className="space-y-4 mb-8">
+          <ul className="mb-8 space-y-4">
             {[
               "Generates high-empathy communications matching borrower sentiment.",
               "Identifies repayment probability peaks using Amazon Nova AI.",
@@ -116,67 +105,63 @@ export function FeaturesSection() {
             ].map((item) => (
               <li
                 key={item}
-                className="flex items-start gap-3 text-sm text-slate-400"
+                className="flex items-start gap-3 text-sm text-[#f2cfb9]"
               >
-                <span className="text-emerald-400 text-lg shrink-0 mt-0.5 leading-none">
+                <span className="mt-0.5 shrink-0 text-lg leading-none text-[#ff9b55]">
                   ●
                 </span>
                 {item}
               </li>
             ))}
           </ul>
-          <div className="h-28 w-full border-t border-blue-500/10 mt-6 relative overflow-hidden bg-blue-500/[0.02] rounded-lg p-4 flex items-end">
-            <div className="absolute top-3 left-4 text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+          <div className="relative mt-6 flex h-28 w-full items-end overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] p-4">
+            <div className="absolute left-4 top-3 text-[10px] font-bold uppercase tracking-wider text-[#ffc990]">
               Average recovery % over 90 days
             </div>
             <svg
-              className="w-full h-16"
+              aria-label="Growing recovery trend chart"
+              className="h-16 w-full"
               preserveAspectRatio="none"
               viewBox="0 0 100 100"
-              aria-label="Growing recovery trend chart"
             >
               <path
                 d="M0,80 Q25,60 50,30 T100,10"
                 fill="none"
-                stroke="#10b981"
+                stroke="#ff9b55"
                 strokeWidth="2.5"
               />
-              <circle cx="100" cy="10" r="4" fill="#10b981" />
+              <circle cx="100" cy="10" fill="#ff9b55" r="4" />
             </svg>
-            <div className="absolute bottom-3 right-4 text-xs font-extrabold text-emerald-400">
+            <div className="absolute bottom-3 right-4 text-xs font-extrabold text-[#ff9b55]">
               +86% Repayment Growth
             </div>
           </div>
         </div>
       </div>
 
-      {/* Section header */}
-      <div className="text-center max-w-3xl mx-auto mb-16">
-        <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight mb-4">
+      <div id="how-it-works" className="mx-auto mb-16 max-w-3xl text-center">
+        <h2 className="mb-4 text-4xl font-extrabold tracking-tight text-[#fff8ed] md:text-5xl">
           Precision Engineered for Scale
         </h2>
-        <p className="text-slate-400 text-lg font-medium">
+        <p className="text-lg font-medium text-[#5a210f]">
           Ditch manual outreach rules. The RecoveryAI inference engine analyzes
           behavioral variables in real-time.
         </p>
       </div>
 
-      {/* Feature cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {features.map(({ Icon, title, description, glow, iconBg }) => (
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3 md:gap-8">
+        {features.map(({ Icon, title, description }) => (
           <div
             key={title}
-            className={`border border-white/[0.08] bg-[#0c101d]/30 backdrop-blur-sm p-8 rounded-2xl transition-all duration-300 ${glow}`}
+            className="rounded-[1.75rem] border border-[#5a210f]/15 bg-[#fff8ed]/90 p-8 shadow-[0_16px_40px_rgba(74,24,12,0.08)] backdrop-blur-sm transition-all duration-300 hover:border-[#5a210f]/30 hover:shadow-[0_20px_50px_rgba(74,24,12,0.14)]"
           >
-            <div
-              className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${iconBg}`}
-            >
+            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[#f36b21]/15 text-[#42170d]">
               <Icon className="h-5 w-5" />
             </div>
-            <h3 className="text-xl font-bold text-white tracking-tight mb-3">
+            <h3 className="mb-3 text-xl font-bold tracking-tight text-[#42170d]">
               {title}
             </h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm leading-relaxed text-[#7f452f]">
               {description}
             </p>
           </div>

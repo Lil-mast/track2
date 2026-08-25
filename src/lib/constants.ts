@@ -1,26 +1,17 @@
-import { isAuroraActive } from "@/config/aws";
-
 /**
- * App constants - real, required by root layout.
- * MIGRATE FROM: frontend/src/lib/constants.ts (move as-is, no changes needed)
+ * App constants
  */
 export const APP_NAME = "RecoveryAI";
 
 export const APP_DESCRIPTION =
   "AI-powered loan recovery platform for B2B lenders";
 
-/** Demo lender UUID in Aurora seed data */
+/** Demo lender UUID in Convex seed data */
 export const DEMO_LENDER_ID = "b0000001-0000-0000-0000-000000000001";
 
-/**
- * Default lender ID.
- * When Aurora is the active data source, use the seeded demo lender UUID.
- * On mock (local dev) use the mock lender id. Kept in sync with the repository
- * selection via isAuroraActive() so we never query Aurora with a mock id.
- */
-export const DEFAULT_LENDER_ID = isAuroraActive()
-  ? (process.env.DEMO_LENDER_ID ?? DEMO_LENDER_ID)
-  : "lender_001";
+/** Default lender ID — demo tenant from Convex seed. */
+export const DEFAULT_LENDER_ID =
+  process.env.DEMO_LENDER_ID ?? DEMO_LENDER_ID;
 
 export const LOAN_STATUSES = [
   "active",

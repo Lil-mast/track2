@@ -36,7 +36,7 @@ export function Slide1Cover() {
 
       {/* Tech stack pills */}
       <div className="flex flex-wrap justify-center gap-2 mt-2">
-        {["Next.js 16", "v0 by Vercel", "AWS Bedrock", "Amazon Aurora", "TypeScript"].map((tech) => (
+        {["Next.js 16", "v0 by Vercel", "AWS Bedrock", "Convex", "TypeScript"].map((tech) => (
           <span
             key={tech}
             className="framer-glass px-3 py-1.5 rounded-full text-xs font-medium text-foreground/80"

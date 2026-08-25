@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/aurora/db";
+import { api, fetchQuery } from "@/lib/convex/server";
 
 export async function GET(
   request: NextRequest,
@@ -16,18 +16,14 @@ export async function GET(
       );
     }
 
-    const strategiesResult = await query(
-      `SELECT s.*
-       FROM strategies s
-       JOIN loans l ON s.loan_id = l.id
-       WHERE s.loan_id = :loanId AND l.lender_id = :lenderId
-       ORDER BY s.created_at DESC`,
-      { loanId, lenderId }
-    );
+    const strategies = await fetchQuery(api.repository.getStrategiesForLoan, {
+      loanId,
+      lenderId,
+    });
 
     return NextResponse.json({
       success: true,
-      strategies: strategiesResult.rows,
+      strategies,
     });
   } catch (error) {
     console.error("Get Strategies Handler Error:", error);

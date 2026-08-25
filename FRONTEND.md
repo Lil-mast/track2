@@ -70,7 +70,7 @@ track2/
     │   │   │   └── [id]/page.tsx
     │   │   ├── rules/page.tsx
     │   │   ├── audit-logs/page.tsx
-    │   │   └── demo/page.tsx             ← Aurora pipeline demo (remove post-migration)
+    │   │   └── (no demo page — data is live via Convex)
     │   └── api/                          ← Next.js API routes
     │
     ├── components/
@@ -93,7 +93,7 @@ track2/
     │   └── ui/                           ← Base UI primitives (shadcn/ui)
     │
     ├── config/                           ← App configuration
-    ├── data/                             ← Static / mock data
+    ├── convex/                           ← Live database (schema, queries, seed)
     ├── lib/                              ← Utilities, constants, labels
     │   ├── constants.ts
     │   ├── labels.ts

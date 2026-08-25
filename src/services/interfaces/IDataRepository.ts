@@ -15,8 +15,7 @@ import type { RecoveryRecommendationWithContext } from "@/types/recovery";
 import type { LenderRule } from "@/types/rules";
 
 /**
- * Repository interface — swap MockDataRepository for AuroraDataRepository
- * when connecting to AWS Aurora PostgreSQL.
+ * Repository interface — implemented by ConvexDataRepository.
  */
 export interface IDataRepository {
   getLender(lenderId: string): Promise<Lender | null>;

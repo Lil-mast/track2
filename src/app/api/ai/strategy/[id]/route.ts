@@ -1,42 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { query } from "@/lib/aurora/db";
-import { isAuroraActive } from "@/config/aws";
-import { updateRecommendationStatus } from "@/data/mock/runtime-store";
+import { api, fetchMutation, fetchQuery } from "@/lib/convex/server";
 
 /**
  * PATCH /api/ai/strategy/[id]
  *
  * Human-in-the-loop review action for an AI recovery strategy.
- * Pure database update — does not depend on Bedrock.
- *
- * Body: { action: "approve" | "reject" | "execute", lenderId: uuid }
- *
- * Status transitions:
- *   approve -> status='approved'  (sets approved_at, reviewed_at)
- *   reject  -> status='rejected'  (sets reviewed_at)
- *   execute -> status='executed'  (sets executed_at, approved_at, reviewed_at)
- *
- * Tenant-scoped: only updates rows belonging to the given lender.
  */
 
 const requestSchema = z.object({
   action: z.enum(["approve", "reject", "execute"]),
   lenderId: z.string().uuid(),
 });
-
-const STATUS_SQL: Record<string, string> = {
-  approve: `status = 'approved', approved_at = NOW(), reviewed_at = NOW()`,
-  reject: `status = 'rejected', reviewed_at = NOW()`,
-  execute: `status = 'executed', executed_at = NOW(),
-            approved_at = COALESCE(approved_at, NOW()), reviewed_at = NOW()`,
-};
-
-const AUDIT_VERB: Record<string, string> = {
-  approve: "Approved",
-  reject: "Rejected",
-  execute: "Executed",
-};
 
 export async function PATCH(
   request: NextRequest,
@@ -45,7 +20,6 @@ export async function PATCH(
   try {
     const { id } = await params;
 
-    // Accept both UUID format (Aurora) and rec_xxx / wf_xxx format (mock store)
     if (!id || id.trim().length === 0 || id.length > 128) {
       return NextResponse.json(
         { error: "Invalid strategy id" },
@@ -56,80 +30,30 @@ export async function PATCH(
     const body = await request.json();
     const { action, lenderId } = requestSchema.parse(body);
 
-    // ── Mock path (Aurora disabled) ──────────────────────────────────────────
-    if (!isAuroraActive()) {
-      const statusMap: Record<string, import("@/types").RecommendationStatus> = {
-        approve: "approved",
-        reject: "rejected",
-        execute: "executed",
-      };
-      const updated = updateRecommendationStatus(id, statusMap[action], lenderId);
-      if (!updated) {
-        return NextResponse.json(
-          { error: "Strategy not found or not owned by this lender" },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json({ success: true, strategy: updated });
-    }
-    // ────────────────────────────────────────────────────────────────────────
+    const lender = await fetchQuery(api.repository.getLender, { lenderId });
+    const userName = lender?.name ?? "System";
+    const userEmail = lender?.contactEmail ?? "system@recoveriq.ai";
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined;
+    const ua = request.headers.get("user-agent") ?? undefined;
 
-    const result = await query(
-      `UPDATE strategies
-       SET ${STATUS_SQL[action]}
-       WHERE id = :id AND lender_id = :lenderId
-       RETURNING id, status, recommended_action, approved_at, executed_at,
-                 reviewed_at, updated_at`,
-      { id, lenderId }
-    );
+    const updated = await fetchMutation(api.repository.updateStrategyStatus, {
+      strategyId: id,
+      lenderId,
+      action,
+      auditMeta: {
+        userName,
+        userEmail,
+        ipAddress: ip,
+        userAgent: ua,
+      },
+    });
 
-    if (result.rowCount === 0) {
+    if (!updated) {
       return NextResponse.json(
         { error: "Strategy not found or not owned by this lender" },
         { status: 404 }
       );
-    }
-
-    const updated = result.rows[0];
-
-    // Best-effort audit trail — never fail the action if logging fails.
-    try {
-      const lender = await query(
-        `SELECT name, email FROM users WHERE id = :lenderId`,
-        { lenderId }
-      );
-      const userName = (lender.rows[0]?.name as string) ?? "System";
-      const userEmail =
-        (lender.rows[0]?.email as string) ?? "system@recoveriq.ai";
-      const label =
-        (updated.recommended_action as string) ?? "Recovery Strategy";
-      const ip =
-        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
-      const ua = request.headers.get("user-agent") ?? null;
-
-      await query(
-        `INSERT INTO audit_logs
-           (lender_id, user_id, user_name, user_email, action, entity_type,
-            entity_id, entity_label, description, ip_address, user_agent)
-         VALUES
-           (:lenderId, :lenderId, :userName, :userEmail,
-            CAST(:auditAction AS audit_action),
-            CAST('recommendation' AS audit_entity_type),
-            CAST(:entityId AS text), :label, :description, :ip, :ua)`,
-        {
-          lenderId,
-          userName,
-          userEmail,
-          auditAction: action,
-          entityId: id,
-          label,
-          description: `${AUDIT_VERB[action]} AI recovery strategy "${label}"`,
-          ip,
-          ua,
-        }
-      );
-    } catch (auditErr) {
-      console.error("Audit log write failed (non-fatal):", auditErr);
     }
 
     return NextResponse.json({ success: true, strategy: updated });

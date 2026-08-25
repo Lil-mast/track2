@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runRecoveryEngine } from "@/services/recovery-engine";
-import { isAuroraActive } from "@/config/aws";
-import { appendRecommendation } from "@/data/mock/runtime-store";
+import { createStrategyFromEngineConvex } from "@/services/convex/ConvexDataRepository";
 import { DEFAULT_LENDER_ID } from "@/lib/constants";
 import type { RecommendRequestBody } from "@/types/recovery-engine";
 
-// Maps the engine's AI-action to a RecoveryAction compatible with the schema
 const ACTION_MAP: Record<string, string> = {
   remind: "email_reminder",
   renegotiate: "payment_plan",
@@ -50,36 +48,35 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Persist to the mock store when Aurora is not active.
-    // Aurora path: the engine already writes to the DB via its own INSERT.
-    if (!isAuroraActive()) {
-      const { aiRecommendation, riskAssessment, finalAction, input } = result;
-      const recoveryAction = (ACTION_MAP[aiRecommendation.recommendedAction] ??
-        "email_reminder") as import("@/types").RecoveryAction;
+    const { aiRecommendation, riskAssessment, finalAction, input } = result;
+    const recoveryAction = (ACTION_MAP[aiRecommendation.recommendedAction] ??
+      "email_reminder") as import("@/types").RecoveryAction;
 
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const expiresAt = new Date(
+      Date.now() + 7 * 24 * 60 * 60 * 1000
+    ).toISOString();
 
-      appendRecommendation({
-        lenderId,
-        loanId: result.loanId,
-        borrowerId: result.borrowerId,
-        action: recoveryAction,
-        status: "pending",
-        priority: riskAssessment.score >= 70 ? 1 : riskAssessment.score >= 40 ? 2 : 3,
-        confidenceScore: Math.min(0.99, 0.5 + riskAssessment.score / 200),
-        riskLevel: toRiskLevel(riskAssessment.score),
-        title: finalAction.label,
-        summary: aiRecommendation.nextStep,
-        reasoning: aiRecommendation.reasoning,
-        expectedRecoveryAmount:
-          input.totalOutstanding * (riskAssessment.score >= 70 ? 0.6 : 0.8),
-        expectedRecoveryRate: riskAssessment.score >= 70 ? 0.6 : 0.8,
-        aiModel: "recoveryai-engine-v1",
-        aiModelVersion: "1.0",
-        generatedAt: result.timestamp,
-        expiresAt,
-      });
-    }
+    await createStrategyFromEngineConvex({
+      lenderId,
+      loanId: result.loanId,
+      borrowerId: result.borrowerId,
+      action: recoveryAction,
+      status: "pending",
+      priority:
+        riskAssessment.score >= 70 ? 1 : riskAssessment.score >= 40 ? 2 : 3,
+      confidenceScore: Math.min(0.99, 0.5 + riskAssessment.score / 200),
+      riskLevel: toRiskLevel(riskAssessment.score),
+      title: finalAction.label,
+      summary: aiRecommendation.nextStep,
+      reasoning: aiRecommendation.reasoning,
+      expectedRecoveryAmount:
+        input.totalOutstanding * (riskAssessment.score >= 70 ? 0.6 : 0.8),
+      expectedRecoveryRate: riskAssessment.score >= 70 ? 0.6 : 0.8,
+      aiModel: "recoveryai-engine-v1",
+      aiModelVersion: "1.0",
+      generatedAt: result.timestamp,
+      expiresAt,
+    });
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {

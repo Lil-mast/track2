@@ -1,117 +1,62 @@
-import Image from "next/image";
 import Link from "next/link";
-
-const productLinks = ["API Platform", "Nova Inference", "Smart Link Engine", "Pricing"];
-const legalLinks = ["Privacy Policy", "Terms of Service", "Security"];
-const companyLinks = ["Status", "Contact", "About Us", "Press Kit"];
 
 export function FooterSection() {
   return (
-    <footer className="relative bg-[#030712] w-full pt-20 pb-12 border-t border-white/[0.05] z-10 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-2 md:grid-cols-6 gap-10 mb-16">
-        {/* Brand */}
-        <div className="col-span-2">
-          <Link href="/" className="inline-block mb-4">
-            <Image
-              src="/images/logo.png"
-              alt="RecoveryAI"
-              width={130}
-              height={36}
-              className="h-8 w-auto"
-            />
+    <footer className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-8 pt-10 sm:px-6">
+      <div className="footer-alive relative overflow-hidden rounded-t-[2rem] border border-[#ff9b55]/25 bg-[#42170d]/95 px-6 py-12 shadow-[0_24px_60px_-12px_rgba(66,23,13,0.7),inset_0_1px_0_0_rgba(255,243,220,0.12),0_0_50px_-8px_rgba(243,107,33,0.45)] backdrop-blur-3xl sm:px-12 sm:py-16">
+        <div
+          aria-hidden="true"
+          className="footer-breathe footer-breathe-a pointer-events-none absolute -bottom-24 -left-10 z-0 h-[280px] w-[520px] rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(243,107,33,0.85)_0%,rgba(243,107,33,0)_70%)] blur-[36px]"
+        />
+        <div
+          aria-hidden="true"
+          className="footer-breathe footer-breathe-b pointer-events-none absolute -top-16 -right-6 z-0 h-[260px] w-[480px] rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(255,155,85,0.7)_0%,rgba(255,155,85,0)_70%)] blur-[34px]"
+        />
+        <div
+          aria-hidden="true"
+          className="footer-breathe footer-breathe-c pointer-events-none absolute -bottom-28 left-[30%] z-0 h-[240px] w-[460px] rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(255,243,220,0.45)_0%,rgba(255,243,220,0)_70%)] blur-[32px]"
+        />
+        <div
+          aria-hidden="true"
+          className="footer-breathe footer-breathe-d pointer-events-none absolute left-1/2 top-1/2 z-0 h-[180px] w-[180px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(50%_50%_at_50%_50%,rgba(255,155,85,0.55)_0%,rgba(255,155,85,0)_70%)] blur-[28px]"
+        />
+
+        <div className="relative z-10 flex max-w-xl flex-col gap-5">
+          <Link
+            href="/"
+            className="group inline-flex w-fit items-center gap-2.5 text-[#fff8ed]"
+          >
+            <span
+              aria-hidden="true"
+              className="footer-mark grid h-7 w-7 grid-cols-2 gap-1 rounded-md bg-[#f36b21] p-1.5 shadow-[0_0_20px_rgba(243,107,33,0.55)]"
+            >
+              <span className="rounded-[2px] bg-[#fff8ed]" />
+              <span className="rounded-[2px] bg-[#fff8ed]/55" />
+              <span className="rounded-[2px] bg-[#fff8ed]/55" />
+              <span className="rounded-[2px] bg-[#fff8ed]" />
+            </span>
+            <span className="text-xl font-bold uppercase tracking-[0.12em]">
+              Recovery
+              <span className="text-[#ff9b55] transition-colors group-hover:text-[#fff3dc]">
+                AI
+              </span>
+            </span>
           </Link>
-          <p className="text-slate-400 text-sm leading-relaxed mb-6 max-w-xs">
-            Empowering modern fintech platforms with context-aware,
-            hyper-personalized recovery automation.
+
+          <p className="max-w-sm text-sm leading-relaxed text-[#f2cfb9]">
+            Financial empowerment, powered by AI. Context-aware recovery built
+            to protect trust and restore momentum.
           </p>
-          <div className="flex gap-3">
-            {["X", "Li", "GH", "@"].map((icon) => (
-              <a
-                key={icon}
-                href="#"
-                aria-label={icon}
-                className="w-8 h-8 rounded-full border border-white/[0.08] bg-slate-950/40 hover:bg-blue-500/10 hover:border-blue-500/30 text-slate-400 hover:text-blue-400 flex items-center justify-center transition-all duration-300 text-xs font-bold"
-              >
-                {icon}
-              </a>
-            ))}
-          </div>
         </div>
 
-        {/* Product */}
-        <div className="col-span-1">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">
-            Product
-          </h4>
-          <ul className="flex flex-col gap-3 text-xs">
-            {productLinks.map((link) => (
-              <li key={link}>
-                <a
-                  className="text-slate-400 hover:text-white transition-colors"
-                  href="#"
-                >
-                  {link}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <div
+          aria-hidden="true"
+          className="footer-shimmer relative z-10 my-10 h-px w-full"
+        />
 
-        {/* Legal */}
-        <div className="col-span-1">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">
-            Legal &amp; Security
-          </h4>
-          <ul className="flex flex-col gap-3 text-xs">
-            {legalLinks.map((link) => (
-              <li key={link}>
-                <a
-                  className="text-slate-400 hover:text-white transition-colors"
-                  href="#"
-                >
-                  {link}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Company */}
-        <div className="col-span-1">
-          <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-4">
-            Company
-          </h4>
-          <ul className="flex flex-col gap-3 text-xs">
-            {companyLinks.map((link) => (
-              <li key={link}>
-                <a
-                  className="text-slate-400 hover:text-white transition-colors"
-                  href="#"
-                >
-                  {link}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 border-t border-white/[0.05] pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-        <p className="text-[11px] text-slate-500 font-medium">
-          &copy; {new Date().getFullYear()} RecoveryAI Inc. All rights
-          reserved. Built for high-performance enterprise teams.
+        <p className="relative z-10 text-xs uppercase tracking-[0.06em] text-[#e8b99d]">
+          &copy; {new Date().getFullYear()} RecoveryAI. All rights reserved.
         </p>
-        <div className="flex gap-6 text-[11px] text-slate-500">
-          <a href="#" className="hover:text-white transition-colors">
-            Privacy Policy
-          </a>
-          <a href="#" className="hover:text-white transition-colors">
-            Terms of Use
-          </a>
-          <a href="#" className="hover:text-white transition-colors">
-            Cookie Preferences
-          </a>
-        </div>
       </div>
     </footer>
   );

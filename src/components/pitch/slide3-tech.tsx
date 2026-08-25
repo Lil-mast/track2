@@ -19,7 +19,7 @@ const techPillars = [
     name: "Amazon Web Services",
     role: "Cloud Infrastructure",
     bullets: [
-      "Amazon Aurora PostgreSQL for transactional loan data",
+      "Convex for transactional loan data",
       "Scalable, managed infrastructure with 99.99% SLA",
       "IAM-based secure access patterns with zero hardcoded credentials",
       "Multi-AZ deployment for high availability and disaster recovery",

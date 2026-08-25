@@ -15,7 +15,7 @@ const steps = [
     icon: FileText,
     title: "Input Data",
     color: "blue",
-    desc: "Transaction history, payment records, contact history, and outstanding balances ingested from Aurora PostgreSQL.",
+    desc: "Transaction history, payment records, contact history, and outstanding balances stored in Convex.",
     tag: "Data Ingestion",
   },
   {

@@ -1,22 +1,19 @@
-import {
-  mockAuditLogs,
-  mockBorrowers,
-  mockLoans,
-  mockPayments,
-  mockRecommendations,
-} from "@/data/mock";
 import type { ContactRecord, WorkflowInputContext } from "@/types/recovery-engine";
 import type { LoanWithBorrower, LoanWithDetails } from "@/types/loan";
 import type { Payment } from "@/types/payment";
+import type { AuditLog } from "@/types/audit";
+import type { RecoveryRecommendationWithContext } from "@/types/recovery";
 
-function buildContactHistory(
+function buildContactHistoryFromData(
   loanId: string,
   borrowerId: string,
+  auditLogs: AuditLog[],
+  recommendations: RecoveryRecommendationWithContext[],
   lastContactDate?: string
 ): ContactRecord[] {
   const history: ContactRecord[] = [];
 
-  const relatedAudits = mockAuditLogs
+  const relatedAudits = auditLogs
     .filter(
       (a) =>
         (a.entityId === loanId ||
@@ -49,7 +46,7 @@ function buildContactHistory(
     });
   }
 
-  const loanRecs = mockRecommendations.filter((r) => r.loanId === loanId);
+  const loanRecs = recommendations.filter((r) => r.loanId === loanId);
   for (const rec of loanRecs.filter((r) => r.executedAt).slice(0, 3)) {
     history.push({
       date: rec.executedAt!,
@@ -79,49 +76,29 @@ function computeOnTimeRate(payments: Payment[]): number {
 
 export function buildWorkflowContext(
   loan: LoanWithBorrower | LoanWithDetails,
-  payments: Payment[]
+  payments: Payment[],
+  options?: {
+    auditLogs?: AuditLog[];
+    recommendations?: RecoveryRecommendationWithContext[];
+    lastContactDate?: string;
+  }
 ): WorkflowInputContext {
-  // lastContactDate is only available in mock data — safe to skip for Aurora.
-  const mockBorrower = mockBorrowers.find((b) => b.id === loan.borrowerId);
+  const auditLogs = options?.auditLogs ?? [];
+  const recommendations = options?.recommendations ?? [];
 
   return {
     loan,
     payments,
-    contactHistory: buildContactHistory(
+    contactHistory: buildContactHistoryFromData(
       loan.id,
       loan.borrowerId,
-      mockBorrower?.lastContactDate
+      auditLogs,
+      recommendations,
+      options?.lastContactDate
     ),
     daysOverdue: loan.daysOverdue,
     missedPaymentsCount: loan.missedPaymentsCount,
     totalOutstanding: loan.outstandingBalance,
     onTimePaymentRate: computeOnTimeRate(payments),
   };
-}
-
-export function loadLoanContext(
-  lenderId: string,
-  loanId: string
-): WorkflowInputContext | null {
-  const loan = mockLoans.find(
-    (l) => l.id === loanId && l.lenderId === lenderId
-  );
-  if (!loan) return null;
-
-  const borrower = mockBorrowers.find((b) => b.id === loan.borrowerId)!;
-  const loanWithBorrower: LoanWithBorrower = {
-    ...loan,
-    borrower: {
-      id: borrower.id,
-      firstName: borrower.firstName,
-      lastName: borrower.lastName,
-      email: borrower.email,
-      phone: borrower.phone,
-      company: borrower.company,
-      riskLevel: borrower.riskLevel,
-    },
-  };
-
-  const payments = mockPayments.filter((p) => p.loanId === loanId);
-  return buildWorkflowContext(loanWithBorrower, payments);
 }

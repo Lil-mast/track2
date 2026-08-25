@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { query } from "@/lib/aurora/db";
+import { api, fetchMutation, fetchQuery } from "@/lib/convex/server";
 import { invokeNova, sanitizeForAI } from "@/services/ai/bedrock";
 import { awsConfig } from "@/config/aws";
 
@@ -23,22 +23,17 @@ export async function POST(request: NextRequest) {
     const validatedData = requestSchema.parse(body);
     const { loanId, riskScore, lenderId } = validatedData;
 
-    const loanResult = await query(
-      `SELECT l.*, b.name AS borrower_name, b.email AS borrower_email
-       FROM loans l
-       JOIN users b ON l.borrower_id = b.id
-       WHERE l.id = :loanId AND l.lender_id = :lenderId`,
-      { loanId, lenderId }
-    );
+    const loanData = await fetchQuery(api.repository.getLoanForAi, {
+      loanId,
+      lenderId,
+    });
 
-    if (loanResult.rowCount === 0) {
+    if (!loanData) {
       return NextResponse.json({ error: "Loan not found" }, { status: 404 });
     }
 
-    const loan = loanResult.rows[0];
-
     const context = {
-      loan,
+      loan: loanData.loan,
       riskScore,
       currentDate: new Date().toISOString(),
     };
@@ -50,20 +45,13 @@ export async function POST(request: NextRequest) {
 
     const strategyContent = await invokeNova(systemPrompt, userPrompt);
 
-    const insertResult = await query(
-      `INSERT INTO strategies (loan_id, lender_id, content, status, model_id, risk_score_at_creation)
-       VALUES (:loanId, :lenderId, :content, 'draft', :modelId, :riskScore)
-       RETURNING id, status, created_at`,
-      {
-        loanId,
-        lenderId,
-        content: strategyContent,
-        modelId: awsConfig.bedrock.modelId,
-        riskScore,
-      }
-    );
-
-    const newStrategy = insertResult.rows[0];
+    const newStrategy = await fetchMutation(api.repository.createBedrockStrategy, {
+      loanId,
+      lenderId,
+      content: strategyContent,
+      modelId: awsConfig.bedrock.modelId,
+      riskScore,
+    });
 
     return NextResponse.json({
       success: true,

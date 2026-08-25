@@ -1,6 +1,5 @@
 import { getDataRepository } from "@/services";
-import { isAuroraActive } from "@/config/aws";
-import { loadLoanContext, buildWorkflowContext } from "./context-builder";
+import { buildWorkflowContext } from "./context-builder";
 import { calculateRiskScore } from "./risk-scorer";
 import { generateAIRecommendation } from "./ai-generator";
 import { validateAgainstRules } from "./rules-validator";
@@ -21,21 +20,22 @@ export async function runRecoveryEngine(
 
   const repo = getDataRepository();
 
-  let context;
-  if (isAuroraActive()) {
-    // Aurora path: load loan+payments from the real database.
-    const loan = await repo.getLoanById(lenderId, loanId);
-    if (!loan) {
-      throw new Error(`Loan not found: ${loanId}`);
-    }
-    context = buildWorkflowContext(loan, loan.payments ?? []);
-  } else {
-    // Mock path: use the in-memory loader.
-    context = loadLoanContext(lenderId, loanId);
-    if (!context) {
-      throw new Error(`Loan not found: ${loanId}`);
-    }
+  const loan = await repo.getLoanById(lenderId, loanId);
+  if (!loan) {
+    throw new Error(`Loan not found: ${loanId}`);
   }
+
+  const [auditResult, recResult, borrower] = await Promise.all([
+    repo.getAuditLogs(lenderId, { pageSize: 50 }),
+    repo.getRecommendations(lenderId, { pageSize: 50 }),
+    repo.getBorrowerById(lenderId, loan.borrowerId),
+  ]);
+
+  const context = buildWorkflowContext(loan, loan.payments ?? [], {
+    auditLogs: auditResult.data,
+    recommendations: recResult.data,
+    lastContactDate: borrower?.lastContactDate,
+  });
 
   const lender = await repo.getLender(lenderId);
   if (!lender) {
@@ -43,11 +43,6 @@ export async function runRecoveryEngine(
   }
 
   const rules = await repo.getRules(lenderId);
-  const borrower = isAuroraActive()
-    ? await repo.getBorrowerById(lenderId, context.loan.borrowerId)
-    : (await repo.getBorrowers(lenderId)).data.find(
-        (b) => b.id === context.loan.borrowerId
-      );
 
   const riskAssessment = calculateRiskScore(context);
   const aiRecommendation = generateAIRecommendation(context, riskAssessment);
@@ -88,12 +83,12 @@ export async function runRecoveryEngine(
     auditLogId: "",
   };
 
-  result.auditLogId = logRecoveryWorkflow(result, requestMeta);
+  result.auditLogId = await logRecoveryWorkflow(result, requestMeta);
 
   return result;
 }
 
-export { loadLoanContext } from "./context-builder";
+export { buildWorkflowContext } from "./context-builder";
 export { calculateRiskScore } from "./risk-scorer";
 export { generateAIRecommendation } from "./ai-generator";
 export { validateAgainstRules } from "./rules-validator";

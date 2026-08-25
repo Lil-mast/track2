@@ -1,5 +1,7 @@
 # RecoveryAI — Data Architecture Summary
 
+> **Runtime database:** Convex (`convex/schema.ts`). This document describes the domain model originally modeled in PostgreSQL; entity names and relationships are preserved in Convex with `externalId` string keys.
+
 ## Schema Diagram
 
 Visual diagram: [https://dbdiagram.io/d/65b10635ac844320ae9fd252](https://dbdiagram.io/d/65b10635ac844320ae9fd252)
@@ -12,7 +14,7 @@ SQL schema file: `database/sql/001_schema.sql`
 
 | Layer | Technology |
 |---|---|
-| Database | AWS Aurora PostgreSQL (Serverless v2) |
+| Database | **Convex** (live deployment; schema in `convex/schema.ts`) |
 | Auth | AWS Cognito (lenders only, v1) |
 | Frontend + API | Next.js on Vercel (Vercel Functions) |
 | AI Engine | AWS Nova (Pro/Lite) via Amazon Bedrock |

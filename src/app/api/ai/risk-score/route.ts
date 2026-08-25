@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { query } from "@/lib/aurora/db";
+import { api, fetchMutation, fetchQuery } from "@/lib/convex/server";
 import { invokeNova, sanitizeForAI } from "@/services/ai/bedrock";
 import { awsConfig } from "@/config/aws";
 
@@ -23,31 +23,22 @@ export async function POST(request: NextRequest) {
     const validatedData = requestSchema.parse(body);
     const { loanId, borrowerId, lenderId } = validatedData;
 
-    const loanDataResult = await query(
-      `SELECT l.*, b.name AS borrower_name, b.email AS borrower_email
-       FROM loans l
-       JOIN users b ON l.borrower_id = b.id
-       WHERE l.id = :loanId AND l.borrower_id = :borrowerId AND l.lender_id = :lenderId`,
-      { loanId, borrowerId, lenderId }
-    );
+    const loanData = await fetchQuery(api.repository.getLoanForAi, {
+      loanId,
+      lenderId,
+      borrowerId,
+    });
 
-    if (loanDataResult.rowCount === 0) {
+    if (!loanData) {
       return NextResponse.json(
         { error: "Loan not found or unauthorized" },
         { status: 404 }
       );
     }
 
-    const loan = loanDataResult.rows[0];
-
-    const scheduleResult = await query(
-      `SELECT * FROM repayment_schedule WHERE loan_id = :loanId ORDER BY due_date ASC`,
-      { loanId }
-    );
-
     const aiInput = {
-      loan,
-      repaymentSchedule: scheduleResult.rows,
+      loan: loanData.loan,
+      repaymentSchedule: loanData.repaymentSchedule,
       assessmentDate: new Date().toISOString(),
     };
     const sanitizedContext = sanitizeForAI(aiInput);
@@ -68,22 +59,13 @@ export async function POST(request: NextRequest) {
       reasoning: string;
     };
 
-    await query(
-      `INSERT INTO ai_insights (loan_id, lender_id, risk_score, reasoning, model_id)
-       VALUES (:loanId, :lenderId, :riskScore, :reasoning, :modelId)`,
-      {
-        loanId,
-        lenderId,
-        riskScore: risk_score,
-        reasoning,
-        modelId: awsConfig.bedrock.modelId,
-      }
-    );
-
-    await query(
-      `UPDATE loans SET latest_risk_score = :riskScore WHERE id = :loanId`,
-      { loanId, riskScore: risk_score }
-    );
+    await fetchMutation(api.repository.createAiInsight, {
+      loanId,
+      lenderId,
+      riskScore: risk_score,
+      reasoning,
+      modelId: awsConfig.bedrock.modelId,
+    });
 
     return NextResponse.json({
       success: true,

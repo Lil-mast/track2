@@ -7,75 +7,75 @@ RecoveryAI is a B2B SaaS platform designed for financial institutions and lendin
 
 ---
 
-## 🚀 The Vision
+## Architecture
 
-Traditional loan recovery is often reactive and abrasive. RecoveryAI transforms this into a proactive, data-driven experience. Our platform analyzes borrower behavior, repayment history, and loan terms to recommend the most effective next steps—whether it's a restructured payment plan, an automated reminder, or a personal outreach call.
-
----
-
-## 🏗️ The "Zero Stack" Architecture
-
-We are transitioning from a fragmented stack to a cohesive, high-performance AWS & Vercel environment.
-
-| Component | Migration/Selection | Rationale |
-|-----------|----------------------|-----------|
-| **Frontend** | Next.js (App Router) | Seamless integration with Vercel v0 for rapid UI prototyping. |
-| **Backend** | Next.js API Routes (Node.js) | Unified codebase, simplified deployment, and high scalability. |
-| **Database** | **Amazon Aurora PostgreSQL** | Relational data integrity with enterprise-grade performance and scaling. |
-| **Auth** | **AWS Cognito** | Fully native AWS identity management with built-in email verification and secure user flows. |
-| **AI Engine** | **AWS Bedrock / OpenAI** | Generates context-aware recovery recommendations based on live borrower data. |
-| **Hosting** | Vercel | Optimized for Next.js and frontend performance. |
+| Component | Technology | Rationale |
+|-----------|------------|-----------|
+| **Frontend** | Next.js (App Router) | Unified UI + API on Vercel |
+| **Database** | **Convex** | Live document database with real-time queries; demo portfolio seeded via `pnpm seed` |
+| **AI Engine** | **AWS Bedrock (Nova)** | Risk scoring and strategy generation from live borrower data |
+| **Hosting** | Vercel | Optimized for Next.js |
 
 ---
 
-## 🧠 AI-Assisted Recommendations
+## Getting Started
 
-Instead of simple "Overdue" flags, RecoveryAI provides actionable insights:
+### Prerequisites
+- Node.js 18+
+- [Convex](https://convex.dev) account
+- AWS account (Bedrock only, optional for AI routes)
+- pnpm
 
-> *"This borrower has missed two payments on a high-interest loan that is 80% through its term. Recommend a restructuring call before escalating to collections."*
+### Setup
 
-### Key AI Features:
-- **Risk Scoring:** Dynamic assessment of default probability.
-- **Sentiment Analysis:** (Future) Analyze communication history to tailor outreach.
-- **Strategy Generation:** Automated drafting of customized recovery plans.
+1. Clone the repository
+2. Install dependencies: `pnpm install`
+3. Copy env template: `cp .env.example .env.local`
+4. Start Convex (creates/links deployment, writes `NEXT_PUBLIC_CONVEX_URL`):
+   ```bash
+   pnpm run dev:convex
+   ```
+5. Seed the demo portfolio (once):
+   ```bash
+   pnpm seed
+   ```
+6. Run Next.js:
+   ```bash
+   pnpm dev
+   ```
+
+### Environment variables
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `NEXT_PUBLIC_CONVEX_URL` | Yes | Convex deployment URL |
+| `CONVEX_DEPLOY_KEY` | Vercel prod | Server-side Convex auth on Vercel |
+| `BEDROCK_ENABLED` | No | Enable `/api/ai/*` Bedrock routes |
+| `BEDROCK_REGION`, `AWS_REGION` | Bedrock | AWS region for Nova |
+| `DEMO_LENDER_ID` | No | Override demo tenant UUID |
 
 ---
 
-## 🛠️ Project Structure (Initial)
+## Project structure
 
 ```text
 track2/
-├── app/                # Next.js App Router (UI & API)
-├── components/         # Shared UI components (v0 generated)
-├── lib/                # Database clients, AI logic, and AWS SDKs
-├── docs/               # Technical documentation
-├── README.md           # Project overview
-└── .env.example        # Environment variables template
+├── convex/              # Schema, queries, mutations, seed
+├── src/
+│   ├── app/             # Next.js App Router (UI + API)
+│   ├── components/
+│   ├── lib/convex/      # Server-side fetchQuery helpers
+│   └── services/convex/ # ConvexDataRepository
+├── database/            # Legacy SQL schema reference
+└── .env.example
 ```
 
 ---
 
-## 🚦 Getting Started
+## Data flow
 
-### Prerequisites
-- Node.js 18+
-- AWS Account (Aurora, Cognito, Bedrock)
-- Vercel CLI
-
-### Installation
-1. Clone the repository
-2. Install dependencies: `pnpm install`
-3. Setup environment variables: `cp .env.example .env.local`
-4. Run development server: `pnpm run dev`
-
----
-
-## 📅 Roadmap
-- [ ] Initialize Next.js project with Tailwind & Shadcn/UI
-- [ ] Configure AWS Cognito for B2B Auth
-- [ ] Set up Amazon Aurora PostgreSQL schema
-- [ ] Integrate AWS Bedrock for recommendation engine
-- [ ] Deploy to Vercel
+Dashboard pages call `getDataRepository()` → `ConvexDataRepository` → Convex queries.  
+Recovery engine and AI API routes write back via Convex mutations. Bedrock is used only for `/api/ai/risk-score` and `/api/ai/generate-strategy`.
 
 ---
 *Created for the H0: Hack the Zero Stack Hackathon — 2026*
